@@ -1,0 +1,568 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Software Factory — review-ready pull requests from your backlog</title>
+  <meta name="description" content="Turn your engineering backlog into verified, review-ready pull requests — with controlled execution, visibility, and human approval. A 30-day build-in-public experiment. Day 1: nothing works yet.">
+  <meta name="color-scheme" content="light dark">
+  <link rel="canonical" href="https://rayshih.github.io/software-factory/">
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f3efe6;
+      --paper: #faf7f1;
+      --ink: #1b1814;
+      --muted: #4f4a43;
+      --faint: #6b645b;
+      --line: #ddd4c6;
+      --accent: #8a3116;
+      --accent-hover: #6d250f;
+      --accent-ink: #fffaf6;
+      --tag-bg: #f0e0d4;
+      --sans: Inter, "Segoe UI", system-ui, sans-serif;
+      --serif: "Iowan Old Style", Palatino, "Palatino Linotype", "Liberation Serif", Georgia, serif;
+      --mono: "JetBrains Mono", "SFMono-Regular", ui-monospace, "Cascadia Mono", "Liberation Mono", monospace;
+      --zh: "PingFang TC", "Noto Sans CJK TC", "Noto Sans TC", "Microsoft JhengHei", "WenQuanYi Micro Hei", sans-serif;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        color-scheme: dark;
+        --bg: #131210;
+        --paper: #1c1b18;
+        --ink: #f4f0e7;
+        --muted: #c2baae;
+        --faint: #a39b8e;
+        --line: #34322c;
+        --accent: #f0c2a8;
+        --accent-hover: #f7d7c4;
+        --accent-ink: #1c140f;
+        --tag-bg: #3a2c24;
+      }
+    }
+
+    * { box-sizing: border-box; }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: var(--sans);
+      font-size: 1.0625rem;
+      line-height: 1.6;
+      text-rendering: optimizeLegibility;
+    }
+
+    ::selection {
+      background: #e7cbb8;
+      color: #1b1814;
+    }
+
+    :focus-visible {
+      outline: 2px solid var(--accent);
+      outline-offset: 3px;
+    }
+
+    a { color: var(--accent); }
+
+    .wrap {
+      width: min(68rem, calc(100% - 2.5rem));
+      margin-inline: auto;
+    }
+
+    .bar {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 1rem;
+      padding: 1.15rem 0;
+    }
+
+    .wordmark {
+      margin: 0;
+      font-family: var(--serif);
+      font-size: 1.2rem;
+      letter-spacing: -0.02em;
+    }
+
+    .bar a {
+      font-family: var(--mono);
+      font-size: 0.78rem;
+      letter-spacing: 0.04em;
+    }
+
+    header { border-bottom: 1px solid var(--line); }
+
+    .hero { padding: 3.25rem 0 2.75rem; }
+
+    .eyebrow {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.35rem 0.85rem;
+      margin: 0;
+      font-family: var(--mono);
+      font-size: 0.75rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    .eyebrow span + span::before {
+      content: "·";
+      margin-right: 0.85rem;
+      color: var(--faint);
+    }
+
+    h1 {
+      margin: 0.85rem 0 1rem;
+      max-width: 16em;
+      font-family: var(--serif);
+      font-weight: 500;
+      font-size: clamp(2.15rem, 4.5vw, 3.4rem);
+      line-height: 1.12;
+      letter-spacing: -0.025em;
+    }
+
+    .lede {
+      margin: 0;
+      max-width: 40rem;
+      font-size: 1.125rem;
+      line-height: 1.55;
+    }
+
+    .status-line {
+      margin: 1.35rem 0 0;
+      padding-left: 0.8rem;
+      border-left: 2px solid var(--accent);
+      max-width: 40rem;
+      font-family: var(--mono);
+      font-size: 0.86rem;
+      line-height: 1.45;
+    }
+
+    .cta-row {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.85rem 1.35rem;
+      margin: 1.6rem 0 0;
+    }
+
+    .button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 2.85rem;
+      padding: 0.65rem 1.15rem;
+      background: var(--accent);
+      color: var(--accent-ink);
+      font-weight: 600;
+      font-size: 1rem;
+      letter-spacing: -0.011em;
+      text-decoration: none;
+      border-radius: 2px;
+    }
+
+    .button:hover { background: var(--accent-hover); }
+
+    .quiet {
+      font-family: var(--zh);
+      font-size: 0.95rem;
+    }
+
+    section.block { padding: 3rem 0; border-top: 1px solid var(--line); }
+
+    .kicker {
+      margin: 0;
+      font-family: var(--mono);
+      font-size: 0.72rem;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    h2 {
+      margin: 0.4rem 0 0.85rem;
+      max-width: 20em;
+      font-family: var(--serif);
+      font-weight: 500;
+      font-size: clamp(1.65rem, 2.6vw, 2.15rem);
+      line-height: 1.18;
+      letter-spacing: -0.02em;
+    }
+
+    .prose {
+      margin: 0;
+      max-width: 40rem;
+    }
+
+    .prose + .prose { margin-top: 0.85rem; }
+
+    .flow {
+      margin: 1.15rem 0 0;
+      max-width: 46rem;
+      font-family: var(--mono);
+      font-size: 0.8rem;
+      line-height: 1.6;
+    }
+
+    .pipeline {
+      list-style: none;
+      margin: 1.5rem 0 0;
+      padding: 0;
+      display: grid;
+      gap: 0;
+    }
+
+    .pipeline li {
+      padding: 0.85rem 0;
+      border-top: 1px solid var(--line);
+      display: grid;
+      grid-template-columns: 2.4rem 1fr;
+      column-gap: 0.35rem;
+    }
+
+    .pipeline .idx {
+      font-family: var(--mono);
+      font-size: 0.75rem;
+      color: var(--accent);
+      padding-top: 0.18rem;
+    }
+
+    .pipeline h3 {
+      margin: 0;
+      font-family: var(--sans);
+      font-size: 1.02rem;
+      font-weight: 640;
+      letter-spacing: -0.015em;
+      line-height: 1.3;
+    }
+
+    .pipeline p {
+      margin: 0.2rem 0 0;
+      color: var(--muted);
+      font-size: 0.95rem;
+    }
+
+    .tag {
+      display: inline-block;
+      margin-left: 0.35rem;
+      padding: 0.08rem 0.38rem;
+      background: var(--tag-bg);
+      color: var(--accent);
+      font-family: var(--mono);
+      font-size: 0.62rem;
+      font-weight: 500;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      vertical-align: 0.18em;
+    }
+
+    .note {
+      margin: 1.15rem 0 0;
+      max-width: 40rem;
+      color: var(--muted);
+      font-size: 0.98rem;
+    }
+
+    .spec {
+      display: grid;
+      grid-template-columns: minmax(7.5rem, 10rem) 1fr;
+      max-width: 36rem;
+      margin: 1.4rem 0 0;
+      border-top: 1px solid var(--line);
+    }
+
+    .spec dt,
+    .spec dd {
+      margin: 0;
+      padding: 0.72rem 0;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .spec dt {
+      font-family: var(--mono);
+      font-size: 0.72rem;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    .spec dd { margin: 0; }
+
+    .split {
+      display: grid;
+      gap: 2rem;
+      margin-top: 0.4rem;
+    }
+
+    .split h3 {
+      margin: 0 0 0.7rem;
+      font-family: var(--sans);
+      font-size: 0.78rem;
+      font-weight: 640;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    .rules {
+      margin: 0;
+      padding-left: 1.15rem;
+      max-width: 38rem;
+    }
+
+    .rules li { margin: 0.4rem 0; padding-left: 0.2rem; }
+
+    .wont {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      max-width: 24rem;
+    }
+
+    .wont li {
+      padding: 0.45rem 0;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .repo {
+      font-family: var(--mono);
+      font-size: 0.92rem;
+      overflow-wrap: anywhere;
+    }
+
+    footer {
+      border-top: 1px solid var(--line);
+      padding: 1.4rem 0 2.4rem;
+      color: var(--muted);
+      font-size: 0.92rem;
+    }
+
+    footer p { margin: 0; }
+
+    @media (min-width: 860px) {
+      .pipeline {
+        grid-template-columns: repeat(4, 1fr);
+        gap: 1rem 1.35rem;
+      }
+
+      .pipeline li {
+        position: relative;
+        display: block;
+        min-height: 9.6rem;
+        padding: 0.9rem 0.95rem 1rem;
+        border: 1px solid var(--line);
+        background: var(--paper);
+      }
+
+      .pipeline li.mark { border-color: var(--accent); }
+
+      .pipeline h3 { margin-top: 0.45rem; }
+
+      .pipeline li:not(:nth-child(4n))::after {
+        content: "";
+        position: absolute;
+        top: 1.45rem;
+        right: -1.35rem;
+        width: 1.35rem;
+        height: 1px;
+        background: var(--faint);
+      }
+
+      .split {
+        grid-template-columns: 1.35fr 0.8fr;
+        gap: 3.5rem;
+        align-items: start;
+      }
+    }
+
+    @media (max-width: 859px) {
+      .pipeline li.mark { box-shadow: inset 2px 0 0 var(--accent); }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      html { scroll-behavior: auto; }
+    }
+
+    @media (forced-colors: active) {
+      .button { border: 1px solid ButtonText; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="wrap bar">
+      <p class="wordmark">Software Factory</p>
+      <a href="https://github.com/rayshih/software-factory">GitHub</a>
+    </div>
+  </header>
+
+  <main>
+    <section class="hero">
+      <div class="wrap">
+        <p class="eyebrow">
+          <span>Build in public</span>
+          <span>26 Oct – 24 Nov 2026</span>
+          <span>Ray Shih</span>
+        </p>
+        <h1>Turn your engineering backlog into verified, review-ready pull requests — with controlled execution, visibility, and human approval.</h1>
+        <p class="lede">Coding agents can already write code. What teams lack is the factory around them: a queue, execution control, failure recovery, CI verification, human review, an audit trail and cost visibility. Software Factory is that control layer — built by integrating existing infrastructure, not by building another agent.</p>
+        <p class="status-line">Day 1 — nothing works yet; building in public.</p>
+        <div class="cta-row">
+          <a class="button" href="https://docs.google.com/forms/d/e/1FAIpQLSfZh7CwGon-JaBn3jCNt1xi-JmAb0YNw9LavTTHIvuqcaiMLQ/viewform">Join the pilot / book a chat</a>
+          <a class="quiet" href="https://docs.google.com/forms/d/e/1FAIpQLSdcu59DEmhPY6L9ACcldA_53HfuP5lw2MU3i88GKfy2r6gr9g/viewform" lang="zh-Hant">中文版表單</a>
+        </div>
+      </div>
+    </section>
+
+    <section class="block" id="how" aria-labelledby="how-title">
+      <div class="wrap">
+        <p class="kicker">01 — How it works</p>
+        <h2 id="how-title">Issue in. Review-ready pull request out.</h2>
+        <p class="prose">A labelled GitHub issue enters through a GitHub App. The control plane stores it. Trigger.dev queues it, with concurrency limits and retries. An Anthropic Managed Agent works in a sandbox. The run opens a branch and a pull request, GitHub Actions runs CI, and a person reviews the result.</p>
+        <p class="flow">GitHub Issue → GitHub App / webhook → control plane (Postgres) → Trigger.dev queue → Anthropic Managed Agents sandbox → branch + PR → GitHub Actions CI → human review</p>
+
+        <ol class="pipeline" aria-label="Pipeline from GitHub issue to human review">
+          <li>
+            <span class="idx">01</span>
+            <div>
+              <h3>GitHub Issue</h3>
+              <p>A labelled item from the backlog.</p>
+            </div>
+          </li>
+          <li>
+            <span class="idx">02</span>
+            <div>
+              <h3>GitHub App</h3>
+              <p>Webhook in. Tasks are persisted idempotently.</p>
+            </div>
+          </li>
+          <li class="mark">
+            <span class="idx">03</span>
+            <div>
+              <h3>Control plane <span class="tag">Being built</span></h3>
+              <p>Postgres. Decides when a task runs, and records state, cost and failures.</p>
+            </div>
+          </li>
+          <li>
+            <span class="idx">04</span>
+            <div>
+              <h3>Trigger.dev</h3>
+              <p>Queue, global and per-repo concurrency, retry.</p>
+            </div>
+          </li>
+          <li>
+            <span class="idx">05</span>
+            <div>
+              <h3>Managed Agents</h3>
+              <p>Anthropic session and sandbox. Timeouts included.</p>
+            </div>
+          </li>
+          <li>
+            <span class="idx">06</span>
+            <div>
+              <h3>Branch + PR</h3>
+              <p>One pull request per task. Retries do not open a second one.</p>
+            </div>
+          </li>
+          <li>
+            <span class="idx">07</span>
+            <div>
+              <h3>GitHub Actions</h3>
+              <p>CI verification before anyone is asked to review.</p>
+            </div>
+          </li>
+          <li class="mark">
+            <span class="idx">08</span>
+            <div>
+              <h3>Human review <span class="tag">Always</span></h3>
+              <p>Approve, request changes, or reject.</p>
+            </div>
+          </li>
+        </ol>
+        <p class="note">Requesting changes sends the task back through the queue. Rejecting it closes the task and records the failure. Approving it accepts the pull request. Nothing merges on its own. An idle agent session is not a completed task.</p>
+      </div>
+    </section>
+
+    <section class="block" id="pilot" aria-labelledby="pilot-title">
+      <div class="wrap">
+        <p class="kicker">02 — The pilot</p>
+        <h2 id="pilot-title">A short trial on real, low-risk work.</h2>
+        <p class="prose">For CTOs and engineering leads at software startups of about 5–30 people who already use GitHub and AI coding tools, and whose maintenance backlog keeps growing: bug fixes, test gaps, dependency bumps, small changes.</p>
+        <p class="prose">I'm looking for a few design partners. The pilot is deliberately small. The system never runs on a repository that hasn't been explicitly authorised.</p>
+        <dl class="spec">
+          <dt>Length</dt>
+          <dd>1–2 weeks</dd>
+          <dt>Repository</dt>
+          <dd>1, and only if you authorise it</dd>
+          <dt>Work</dt>
+          <dd>Up to 5 low-risk issues</dd>
+          <dt>Review</dt>
+          <dd>A human on every pull request</dd>
+          <dt>Price</dt>
+          <dd>Free, or about £500</dd>
+        </dl>
+        <div class="cta-row">
+          <a class="button" href="https://docs.google.com/forms/d/e/1FAIpQLSfZh7CwGon-JaBn3jCNt1xi-JmAb0YNw9LavTTHIvuqcaiMLQ/viewform">Join the pilot / book a chat</a>
+          <a class="quiet" href="https://docs.google.com/forms/d/e/1FAIpQLSdcu59DEmhPY6L9ACcldA_53HfuP5lw2MU3i88GKfy2r6gr9g/viewform" lang="zh-Hant">中文版表單</a>
+        </div>
+      </div>
+    </section>
+
+    <section class="block" id="principles" aria-labelledby="principles-title">
+      <div class="wrap">
+        <p class="kicker">03 — Principles</p>
+        <h2 id="principles-title">What it will respect, and what it will not do.</h2>
+        <div class="split">
+          <div>
+            <h3>Principles</h3>
+            <ol class="rules">
+              <li>Integrate existing infrastructure; don't rebuild it.</li>
+              <li>Decouple the agent runtime from the control plane.</li>
+              <li>Idempotency on every external operation.</li>
+              <li>Retries never create duplicate pull requests.</li>
+              <li>An idle agent session is not a completed task.</li>
+              <li>Every pull request is human-reviewed.</li>
+              <li>Record cost, human interventions and failure causes.</li>
+              <li>Never run on unauthorised repositories.</li>
+            </ol>
+          </div>
+          <div>
+            <h3>Not in this experiment</h3>
+            <ul class="wont">
+              <li>SaaS onboarding</li>
+              <li>Billing</li>
+              <li>RBAC / SSO</li>
+              <li>Multi-tenancy</li>
+              <li>A custom agent harness</li>
+              <li>A custom scheduler</li>
+              <li>Multi-model routing</li>
+              <li>Auto-merge</li>
+              <li>Deploy automation</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="block" id="status" aria-labelledby="status-title">
+      <div class="wrap">
+        <p class="kicker">04 — Build in public</p>
+        <h2 id="status-title">Day 1 — nothing works yet; building in public.</h2>
+        <p class="prose">There is no working pipeline. This page describes the experiment, not a product you can switch on. Ray Shih is building it alone, from 26 October to 24 November 2026. Progress will be published as it happens, including failures. On 24 November the experiment ends with a Go, Pivot or Stop decision.</p>
+        <p class="prose"><a class="repo" href="https://github.com/rayshih/software-factory">https://github.com/rayshih/software-factory</a></p>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="wrap">
+      <p>© 2026 Ray Shih</p>
+    </div>
+  </footer>
+</body>
+</html>

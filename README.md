@@ -4,6 +4,8 @@
 
 A 30-day Build in Public experiment (26 Oct – 24 Nov 2026) by Ray Shih, solo founder.
 
+Landing page: https://rayshih.github.io/software-factory/
+
 ## Thesis
 Coding agents can already write code. What teams lack is the *factory* around them: a queue, execution control, failure recovery, CI verification, human review, an audit trail and cost visibility. Software Factory is that control layer — built by integrating existing infrastructure, not by building another agent.
 
@@ -38,4 +40,4 @@ Day 1 — planning. No working pipeline yet. Results will be published here as t
 
 ## Join the pilot
 Startup CTO or engineering lead with a growing maintenance backlog? I'm looking for a few design partners to try this on real (low-risk) issues.
-👉 [Apply for the pilot](https://example.com/PILOT_LINK_PLACEHOLDER)
+👉 [Apply for the pilot](https://docs.google.com/forms/d/e/1FAIpQLSfZh7CwGon-JaBn3jCNt1xi-JmAb0YNw9LavTTHIvuqcaiMLQ/viewform) · [中文版表單](https://docs.google.com/forms/d/e/1FAIpQLSdcu59DEmhPY6L9ACcldA_53HfuP5lw2MU3i88GKfy2r6gr9g/viewform)
