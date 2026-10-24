@@ -25,7 +25,7 @@ flowchart LR
   Human -->|request changes| Queue
 ```
 
-An agent session going idle is not a finished task. The run is `pr_opened` only when that branch has commits and an open pull request. CI then moves it to `needs_human`. `accepted` is recorded when a human approves, or when GitHub reports that a human already merged. Nothing in this package calls the merge API.
+An agent session going idle is not a finished task. The run is `pr_opened` only when that branch has commits and an open pull request. CI then moves it to `needs_human`. `accepted` is recorded when a human approves after CI has passed, or when GitHub reports that a human already merged. A merge is still `accepted` when the task is `ci_failed`: a person merged even though CI failed. An approval while CI is failing does not accept the task. Nothing in this package calls the merge API, and there is no accept API.
 
 ## Choices
 
