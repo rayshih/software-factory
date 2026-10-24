@@ -19,6 +19,7 @@ import { findIssueCommentByMarker, issueCommentBody } from "./issue-comment.js";
 import { parseRepo } from "./repo.js";
 
 type InstallationAuth = ReturnType<typeof createAppAuth>;
+const issueCommentLocks = new Map<string, Promise<void>>();
 
 /**
  * GitHub App client. Mints an installation token per call via @octokit/auth-app.
@@ -210,26 +211,53 @@ export class OctokitGitHub implements GitHubClient {
     body: string;
     marker: string;
   }): Promise<IssueCommentResult> {
-    const octokit = await this.octokit(input.installationId);
-    const { owner, repo } = parseRepo(input.repo);
-    const existingId = await findIssueCommentByMarker(input.marker, async (page) => {
-      const comments = await octokit.rest.issues.listComments({
+    const lockKey = JSON.stringify([
+      input.installationId,
+      input.repo.toLowerCase(),
+      input.issueNumber,
+      input.marker,
+    ]);
+    return this.withIssueCommentLock(lockKey, async () => {
+      const octokit = await this.octokit(input.installationId);
+      const { owner, repo } = parseRepo(input.repo);
+      const existingId = await findIssueCommentByMarker(input.marker, async (page) => {
+        const comments = await octokit.rest.issues.listComments({
+          owner,
+          repo,
+          issue_number: input.issueNumber,
+          per_page: 100,
+          page,
+        });
+        return comments.data;
+      });
+      if (existingId !== null) return { id: existingId, created: false };
+      const created = await octokit.rest.issues.createComment({
         owner,
         repo,
         issue_number: input.issueNumber,
-        per_page: 100,
-        page,
+        body: issueCommentBody(input.body, input.marker),
       });
-      return comments.data;
+      return { id: created.data.id, created: true };
     });
-    if (existingId !== null) return { id: existingId, created: false };
-    const created = await octokit.rest.issues.createComment({
-      owner,
-      repo,
-      issue_number: input.issueNumber,
-      body: issueCommentBody(input.body, input.marker),
+  }
+
+  private async withIssueCommentLock<T>(
+    key: string,
+    operation: () => Promise<T>,
+  ): Promise<T> {
+    const previous = issueCommentLocks.get(key) ?? Promise.resolve();
+    let release!: () => void;
+    const current = new Promise<void>((resolve) => {
+      release = resolve;
     });
-    return { id: created.data.id, created: true };
+    issueCommentLocks.set(key, current);
+    await previous;
+    try {
+      return await operation();
+    } finally {
+      release();
+      if (issueCommentLocks.get(key) === current) issueCommentLocks.delete(key);
+    }
   }
 
   private async octokit(installationId: number): Promise<Octokit> {
@@ -288,7 +316,8 @@ export class OctokitGitHub implements GitHubClient {
     branch: string,
     hash: string,
   ): Promise<boolean> {
-    for (let page = 1; ; page += 1) {
+    const maxPages = 2;
+    for (let page = 1; page <= maxPages; page += 1) {
       const commits = await octokit.rest.repos.listCommits({
         owner,
         repo,
@@ -301,6 +330,7 @@ export class OctokitGitHub implements GitHubClient {
       }
       if (commits.data.length < 100) return false;
     }
+    return false;
   }
 }
 
