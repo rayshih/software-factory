@@ -131,7 +131,7 @@ export class FakeGitHub implements GitHubClient {
       sha: base.sha,
       message: base.message,
       commits: 0,
-      contentHashes: new Set(base.contentHashes),
+      contentHashes: new Set(),
     });
     return { sha: base.sha, created: true };
   }
@@ -147,7 +147,7 @@ export class FakeGitHub implements GitHubClient {
     const repo = this.repo(input.repo);
     const branch = repo.branches.get(input.branch);
     if (!branch) throw new Error(`branch ${input.branch} does not exist`);
-    const hash = operationHash(input.issueNumber, input.files);
+    const hash = operationHash(input.branch, input.issueNumber, input.files);
     if (branch.contentHashes.has(hash)) {
       return { sha: branch.sha, created: false };
     }

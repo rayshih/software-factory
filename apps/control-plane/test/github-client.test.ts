@@ -209,6 +209,43 @@ describe("FakeGitHub", () => {
     expect(github.pushesCreated).toBe(3);
   });
 
+  it("does not inherit push fingerprints from a base branch", async () => {
+    const github = new FakeGitHub();
+    github.seedRepo(repo);
+    await github.pushFiles({
+      installationId: 1,
+      repo,
+      branch: "main",
+      issueNumber: 7,
+      files,
+    });
+    await github.ensureBranch({
+      installationId: 1,
+      repo,
+      branch: "factory/issue-7-retry",
+      baseBranch: "main",
+    });
+
+    const first = await github.pushFiles({
+      installationId: 1,
+      repo,
+      branch: "factory/issue-7-retry",
+      issueNumber: 7,
+      files,
+    });
+    const repeated = await github.pushFiles({
+      installationId: 1,
+      repo,
+      branch: "factory/issue-7-retry",
+      issueNumber: 7,
+      files,
+    });
+
+    expect(first.created).toBe(true);
+    expect(repeated).toEqual({ sha: first.sha, created: false });
+    expect(github.pushesCreated).toBe(2);
+  });
+
   it("posts one issue comment per marker when the body omits the marker", async () => {
     const github = new FakeGitHub();
     github.seedRepo(repo);

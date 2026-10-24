@@ -78,7 +78,7 @@ export class OctokitGitHub implements GitHubClient {
     const { owner, repo } = parseRepo(input.repo);
     const parentSha = await this.readRef(octokit, owner, repo, input.branch);
     if (!parentSha) throw new Error(`branch ${input.branch} does not exist on ${input.repo}`);
-    const hash = operationHash(input.issueNumber, input.files);
+    const hash = operationHash(input.branch, input.issueNumber, input.files);
     const parent = await octokit.rest.git.getCommit({ owner, repo, commit_sha: parentSha });
     if (await this.branchHasContentHash(octokit, owner, repo, input.branch, hash)) {
       return { sha: parentSha, created: false };
@@ -310,7 +310,8 @@ export class OctokitGitHub implements GitHubClient {
     branch: string,
     hash: string,
   ): Promise<boolean> {
-    for (let page = 1; ; page += 1) {
+    const maxPages = 2;
+    for (let page = 1; page <= maxPages; page += 1) {
       const commits = await octokit.rest.repos.listCommits({
         owner,
         repo,
@@ -323,6 +324,7 @@ export class OctokitGitHub implements GitHubClient {
       }
       if (commits.data.length < 100) return false;
     }
+    return false;
   }
 }
 

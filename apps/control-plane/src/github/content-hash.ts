@@ -7,12 +7,16 @@ export interface FileChange {
 
 export const CONTENT_HASH_TRAILER = "Factory-Content-Hash:";
 
-export function operationHash(issueNumber: number, files: readonly FileChange[]): string {
+export function operationHash(
+  branch: string,
+  issueNumber: number,
+  files: readonly FileChange[],
+): string {
   const canonical = [...files]
     .map((file) => ({ path: file.path, content: file.content }))
     .sort((left, right) => left.path.localeCompare(right.path));
   return createHash("sha256")
-    .update(JSON.stringify({ issueNumber, files: canonical }))
+    .update(JSON.stringify({ branch, issueNumber, files: canonical }))
     .digest("hex");
 }
 
