@@ -1,0 +1,47 @@
+name: Control plane
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "apps/control-plane/**"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+      - ".github/workflows/control-plane.yml"
+  pull_request:
+    paths:
+      - "apps/control-plane/**"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+      - ".github/workflows/control-plane.yml"
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm --filter @software-factory/control-plane lint
+
+      - name: Typecheck
+        run: pnpm --filter @software-factory/control-plane typecheck
+
+      - name: Test
+        run: pnpm --filter @software-factory/control-plane test
