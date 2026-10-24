@@ -7,6 +7,9 @@
   <meta name="description" content="Turn your engineering backlog into verified, review-ready pull requests — with controlled execution, visibility, and human approval. A 30-day build-in-public experiment. Day 1: nothing works yet.">
   <meta name="color-scheme" content="light dark">
   <link rel="canonical" href="https://rayshih.github.io/software-factory/">
+  <link rel="alternate" hreflang="en" href="https://rayshih.github.io/software-factory/">
+  <link rel="alternate" hreflang="zh-Hant-TW" href="https://rayshih.github.io/software-factory/zh-tw/">
+  <link rel="alternate" hreflang="x-default" href="https://rayshih.github.io/software-factory/">
   <style>
     :root {
       color-scheme: light;
@@ -77,9 +80,38 @@
       display: flex;
       align-items: baseline;
       justify-content: space-between;
-      gap: 1rem;
+      flex-wrap: wrap;
+      gap: 0.5rem 1rem;
       padding: 1.15rem 0;
     }
+
+    .bar-end {
+      display: flex;
+      align-items: baseline;
+      gap: 1.15rem;
+    }
+
+    .lang {
+      display: inline-flex;
+      align-items: baseline;
+      gap: 0.4rem;
+      font-family: var(--zh);
+      font-size: 0.92rem;
+    }
+
+    .lang a {
+      font-family: inherit;
+      font-size: inherit;
+      letter-spacing: 0;
+    }
+
+    .lang [aria-current="page"] {
+      color: var(--ink);
+      font-weight: 650;
+      text-decoration: none;
+    }
+
+    .lang-sep { color: var(--faint); }
 
     .wordmark {
       margin: 0;
@@ -88,7 +120,7 @@
       letter-spacing: -0.02em;
     }
 
-    .bar a {
+    .github {
       font-family: var(--mono);
       font-size: 0.78rem;
       letter-spacing: 0.04em;
@@ -397,7 +429,14 @@
   <header>
     <div class="wrap bar">
       <p class="wordmark">Software Factory</p>
-      <a href="https://github.com/rayshih/software-factory">GitHub</a>
+      <div class="bar-end">
+        <nav class="lang" aria-label="Language">
+          <a href="./" hreflang="en" lang="en" aria-current="page">EN</a>
+          <span class="lang-sep" aria-hidden="true">/</span>
+          <a href="zh-tw/" hreflang="zh-Hant-TW" lang="zh-Hant-TW">中文</a>
+        </nav>
+        <a class="github" href="https://github.com/rayshih/software-factory">GitHub</a>
+      </div>
     </div>
   </header>
 

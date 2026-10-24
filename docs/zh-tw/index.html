@@ -1,0 +1,602 @@
+<!DOCTYPE html>
+<html lang="zh-Hant-TW">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Software Factory — 把工程待辦變成可以 review 的 PR</title>
+  <meta name="description" content="把工程待辦變成經過驗證、可以 review 的 pull request——執行受控、過程看得到、每次都由人核准。30 天公開建造實驗。第一天：目前什麼都不能用。">
+  <meta name="color-scheme" content="light dark">
+  <link rel="canonical" href="https://rayshih.github.io/software-factory/zh-tw/">
+  <link rel="alternate" hreflang="en" href="https://rayshih.github.io/software-factory/">
+  <link rel="alternate" hreflang="zh-Hant-TW" href="https://rayshih.github.io/software-factory/zh-tw/">
+  <link rel="alternate" hreflang="x-default" href="https://rayshih.github.io/software-factory/">
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f3efe6;
+      --paper: #faf7f1;
+      --ink: #1b1814;
+      --muted: #4f4a43;
+      --faint: #6b645b;
+      --line: #ddd4c6;
+      --accent: #8a3116;
+      --accent-hover: #6d250f;
+      --accent-ink: #fffaf6;
+      --tag-bg: #f0e0d4;
+      --sans: "PingFang TC", "Noto Sans TC", "Microsoft JhengHei", "Noto Sans CJK TC", "WenQuanYi Micro Hei", sans-serif;
+      --serif: "PingFang TC", "Noto Sans TC", "Microsoft JhengHei", "Noto Sans CJK TC", "WenQuanYi Micro Hei", sans-serif;
+      --mono: "JetBrains Mono", "SFMono-Regular", ui-monospace, "Cascadia Mono", "PingFang TC", "Noto Sans TC", "Microsoft JhengHei", "WenQuanYi Micro Hei", monospace;
+      --zh: "PingFang TC", "Noto Sans TC", "Microsoft JhengHei", "Noto Sans CJK TC", "WenQuanYi Micro Hei", sans-serif;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        color-scheme: dark;
+        --bg: #131210;
+        --paper: #1c1b18;
+        --ink: #f4f0e7;
+        --muted: #c2baae;
+        --faint: #a39b8e;
+        --line: #34322c;
+        --accent: #f0c2a8;
+        --accent-hover: #f7d7c4;
+        --accent-ink: #1c140f;
+        --tag-bg: #3a2c24;
+      }
+    }
+
+    * { box-sizing: border-box; }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: var(--sans);
+      font-size: 1.0625rem;
+      line-height: 1.75;
+      text-rendering: optimizeLegibility;
+      line-break: strict;
+    }
+
+    ::selection {
+      background: #e7cbb8;
+      color: #1b1814;
+    }
+
+    :focus-visible {
+      outline: 2px solid var(--accent);
+      outline-offset: 3px;
+    }
+
+    a { color: var(--accent); }
+
+    .wrap {
+      width: min(68rem, calc(100% - 2.5rem));
+      margin-inline: auto;
+    }
+
+    .bar {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 0.5rem 1rem;
+      padding: 1.15rem 0;
+    }
+
+    .bar-end {
+      display: flex;
+      align-items: baseline;
+      gap: 1.15rem;
+    }
+
+    .lang {
+      display: inline-flex;
+      align-items: baseline;
+      gap: 0.4rem;
+      font-family: var(--zh);
+      font-size: 0.92rem;
+    }
+
+    .lang a {
+      font-family: inherit;
+      font-size: inherit;
+      letter-spacing: 0;
+    }
+
+    .lang [aria-current="page"] {
+      color: var(--ink);
+      font-weight: 650;
+      text-decoration: none;
+    }
+
+    .lang-sep { color: var(--faint); }
+
+    .wordmark {
+      margin: 0;
+      font-family: var(--serif);
+      font-size: 1.2rem;
+      letter-spacing: -0.02em;
+    }
+
+    .github {
+      font-family: var(--mono);
+      font-size: 0.78rem;
+      letter-spacing: 0.04em;
+    }
+
+    header { border-bottom: 1px solid var(--line); }
+
+    .hero { padding: 3.25rem 0 2.75rem; }
+
+    .eyebrow {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.35rem 0.85rem;
+      margin: 0;
+      font-family: var(--mono);
+      font-size: 0.75rem;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    .eyebrow span + span::before {
+      content: "·";
+      margin-right: 0.85rem;
+      color: var(--faint);
+    }
+
+    h1 {
+      margin: 0.85rem 0 1rem;
+      max-width: 15em;
+      font-family: var(--serif);
+      font-weight: 500;
+      font-size: clamp(2rem, 4.2vw, 3.15rem);
+      line-height: 1.28;
+      letter-spacing: 0;
+    }
+
+    .lede {
+      margin: 0;
+      max-width: 40rem;
+      font-size: 1.125rem;
+      line-height: 1.75;
+    }
+
+    .status-line {
+      margin: 1.35rem 0 0;
+      padding-left: 0.8rem;
+      border-left: 2px solid var(--accent);
+      max-width: 40rem;
+      font-family: var(--mono);
+      font-size: 0.92rem;
+      line-height: 1.6;
+    }
+
+    .cta-row {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.85rem 1.35rem;
+      margin: 1.6rem 0 0;
+    }
+
+    .button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 2.85rem;
+      padding: 0.65rem 1.15rem;
+      background: var(--accent);
+      color: var(--accent-ink);
+      font-weight: 600;
+      font-size: 1rem;
+      letter-spacing: 0;
+      text-decoration: none;
+      border-radius: 2px;
+    }
+
+    .button:hover { background: var(--accent-hover); }
+
+    .quiet { font-size: 0.95rem; }
+
+    section.block { padding: 3rem 0; border-top: 1px solid var(--line); }
+
+    .kicker {
+      margin: 0;
+      font-family: var(--mono);
+      font-size: 0.75rem;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    h2 {
+      margin: 0.4rem 0 0.85rem;
+      max-width: 16em;
+      font-family: var(--serif);
+      font-weight: 500;
+      font-size: clamp(1.55rem, 2.5vw, 2.05rem);
+      line-height: 1.35;
+      letter-spacing: 0;
+    }
+
+    .prose {
+      margin: 0;
+      max-width: 40rem;
+    }
+
+    .prose + .prose { margin-top: 0.85rem; }
+
+    .flow {
+      margin: 1.15rem 0 0;
+      max-width: 46rem;
+      font-family: var(--mono);
+      font-size: 0.84rem;
+      line-height: 1.7;
+    }
+
+    .pipeline {
+      list-style: none;
+      margin: 1.5rem 0 0;
+      padding: 0;
+      display: grid;
+      gap: 0;
+    }
+
+    .pipeline li {
+      padding: 0.85rem 0;
+      border-top: 1px solid var(--line);
+      display: grid;
+      grid-template-columns: 2.4rem 1fr;
+      column-gap: 0.35rem;
+    }
+
+    .pipeline .idx {
+      font-family: var(--mono);
+      font-size: 0.75rem;
+      color: var(--accent);
+      padding-top: 0.18rem;
+    }
+
+    .pipeline h3 {
+      margin: 0;
+      font-family: var(--sans);
+      font-size: 1.02rem;
+      font-weight: 640;
+      letter-spacing: 0;
+      line-height: 1.4;
+    }
+
+    .pipeline p {
+      margin: 0.2rem 0 0;
+      color: var(--muted);
+      font-size: 0.95rem;
+    }
+
+    .tag {
+      display: inline-block;
+      margin-left: 0.35rem;
+      padding: 0.08rem 0.38rem;
+      background: var(--tag-bg);
+      color: var(--accent);
+      font-family: var(--sans);
+      font-size: 0.68rem;
+      font-weight: 500;
+      letter-spacing: 0.04em;
+      vertical-align: 0.12em;
+    }
+
+    .note {
+      margin: 1.15rem 0 0;
+      max-width: 40rem;
+      color: var(--muted);
+      font-size: 0.98rem;
+    }
+
+    .spec {
+      display: grid;
+      grid-template-columns: minmax(5.5rem, 8rem) 1fr;
+      max-width: 36rem;
+      margin: 1.4rem 0 0;
+      border-top: 1px solid var(--line);
+    }
+
+    .spec dt,
+    .spec dd {
+      margin: 0;
+      padding: 0.72rem 0;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .spec dt {
+      font-family: var(--sans);
+      font-size: 0.92rem;
+      letter-spacing: 0;
+      color: var(--muted);
+    }
+
+    .spec dd { margin: 0; }
+
+    .split {
+      display: grid;
+      gap: 2rem;
+      margin-top: 0.4rem;
+    }
+
+    .split h3 {
+      margin: 0 0 0.7rem;
+      font-family: var(--sans);
+      font-size: 0.92rem;
+      font-weight: 640;
+      letter-spacing: 0;
+      color: var(--muted);
+    }
+
+    .rules {
+      margin: 0;
+      padding-left: 1.25rem;
+      max-width: 38rem;
+    }
+
+    .rules li { margin: 0.45rem 0; padding-left: 0.2rem; }
+
+    .wont {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      max-width: 24rem;
+    }
+
+    .wont li {
+      padding: 0.45rem 0;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .repo {
+      font-family: var(--mono);
+      font-size: 0.92rem;
+      overflow-wrap: anywhere;
+    }
+
+    footer {
+      border-top: 1px solid var(--line);
+      padding: 1.4rem 0 2.4rem;
+      color: var(--muted);
+      font-size: 0.92rem;
+    }
+
+    footer p { margin: 0; }
+
+    @media (min-width: 860px) {
+      .pipeline {
+        grid-template-columns: repeat(4, 1fr);
+        gap: 1rem 1.35rem;
+      }
+
+      .pipeline li {
+        position: relative;
+        display: block;
+        min-height: 10.4rem;
+        padding: 0.9rem 0.95rem 1rem;
+        border: 1px solid var(--line);
+        background: var(--paper);
+      }
+
+      .pipeline li.mark { border-color: var(--accent); }
+
+      .pipeline h3 { margin-top: 0.45rem; }
+
+      .pipeline li:not(:nth-child(4n))::after {
+        content: "";
+        position: absolute;
+        top: 1.45rem;
+        right: -1.35rem;
+        width: 1.35rem;
+        height: 1px;
+        background: var(--faint);
+      }
+
+      .split {
+        grid-template-columns: 1.35fr 0.8fr;
+        gap: 3.5rem;
+        align-items: start;
+      }
+    }
+
+    @media (max-width: 859px) {
+      .pipeline li.mark { box-shadow: inset 2px 0 0 var(--accent); }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      html { scroll-behavior: auto; }
+    }
+
+    @media (forced-colors: active) {
+      .button { border: 1px solid ButtonText; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="wrap bar">
+      <p class="wordmark">Software Factory</p>
+      <div class="bar-end">
+        <nav class="lang" aria-label="語言">
+          <a href="../" hreflang="en" lang="en">EN</a>
+          <span class="lang-sep" aria-hidden="true">/</span>
+          <a href="./" hreflang="zh-Hant-TW" lang="zh-Hant-TW" aria-current="page">中文</a>
+        </nav>
+        <a class="github" href="https://github.com/rayshih/software-factory">GitHub</a>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <section class="hero">
+      <div class="wrap">
+        <p class="eyebrow">
+          <span>公開建造</span>
+          <span>2026/10/26 – 11/24</span>
+          <span>Ray Shih</span>
+        </p>
+        <h1>把工程待辦變成經過驗證、可以 review 的 pull request——執行受控、過程看得到、每次都由人核准。</h1>
+        <p class="lede">AI agent 已經寫得出程式碼。團隊缺的是包在外面的那座工廠：佇列、執行控制、失敗後怎麼復原、CI 驗證、人工 review、稽核軌跡，以及成本看得到。Software Factory 是這一層控制。它接現成的基礎設施，而不是再做一個 agent。</p>
+        <p class="status-line">第一天——目前什麼都不能用；正在公開建造。</p>
+        <div class="cta-row">
+          <a class="button" href="https://docs.google.com/forms/d/e/1FAIpQLSdcu59DEmhPY6L9ACcldA_53HfuP5lw2MU3i88GKfy2r6gr9g/viewform">加入 pilot／預約聊聊</a>
+          <a class="quiet" href="https://docs.google.com/forms/d/e/1FAIpQLSfZh7CwGon-JaBn3jCNt1xi-JmAb0YNw9LavTTHIvuqcaiMLQ/viewform" lang="en">English form</a>
+        </div>
+      </div>
+    </section>
+
+    <section class="block" id="how" aria-labelledby="how-title">
+      <div class="wrap">
+        <p class="kicker">01 — 怎麼運作</p>
+        <h2 id="how-title">GitHub Issue 進來，可以 review 的 PR 出去。</h2>
+        <p class="prose">有標籤的 GitHub Issue，會從 GitHub App 進來。控制層先把它存下來。Trigger.dev 負責排隊，限制同時跑幾件，也處理重試。Anthropic Managed Agent 在 sandbox 裡工作。跑完會開 branch 和 PR，GitHub Actions 跑 CI，然後由人 review。</p>
+        <p class="flow">GitHub Issue → GitHub App / webhook → 控制層（Postgres）→ Trigger.dev 佇列 → Anthropic Managed Agents sandbox → branch + PR → GitHub Actions CI → 人工 review</p>
+
+        <ol class="pipeline" aria-label="從 GitHub Issue 到人工 review 的流程">
+          <li>
+            <span class="idx">01</span>
+            <div>
+              <h3>GitHub Issue</h3>
+              <p>待辦裡一個標好標籤的項目。</p>
+            </div>
+          </li>
+          <li>
+            <span class="idx">02</span>
+            <div>
+              <h3>GitHub App</h3>
+              <p>Webhook 進來。任務以冪等方式存下來。</p>
+            </div>
+          </li>
+          <li class="mark">
+            <span class="idx">03</span>
+            <div>
+              <h3>Control plane <span class="tag">建造中</span></h3>
+              <p>Postgres。決定任務何時跑，並記錄狀態、成本與失敗。</p>
+            </div>
+          </li>
+          <li>
+            <span class="idx">04</span>
+            <div>
+              <h3>Trigger.dev</h3>
+              <p>佇列、全域與各專案的並行上限、重試。</p>
+            </div>
+          </li>
+          <li>
+            <span class="idx">05</span>
+            <div>
+              <h3>Managed Agents</h3>
+              <p>Anthropic 的 session 和 sandbox，含逾時。</p>
+            </div>
+          </li>
+          <li>
+            <span class="idx">06</span>
+            <div>
+              <h3>Branch + PR</h3>
+              <p>一件任務一張 PR。重試不會再開第二張。</p>
+            </div>
+          </li>
+          <li>
+            <span class="idx">07</span>
+            <div>
+              <h3>GitHub Actions</h3>
+              <p>請人 review 之前，先過 CI。</p>
+            </div>
+          </li>
+          <li class="mark">
+            <span class="idx">08</span>
+            <div>
+              <h3>Human review <span class="tag">一律</span></h3>
+              <p>核准、要求修改，或退件。</p>
+            </div>
+          </li>
+        </ol>
+        <p class="note">要求修改會把任務送回佇列。退件會關閉任務，並把失敗記下來。核准才算接受這張 PR。沒有自動 merge。Agent session 沒在動，不代表任務做完了。</p>
+      </div>
+    </section>
+
+    <section class="block" id="pilot" aria-labelledby="pilot-title">
+      <div class="wrap">
+        <p class="kicker">02 — Pilot</p>
+        <h2 id="pilot-title">用真實、低風險的工作，做一次短的試行。</h2>
+        <p class="prose">給大約 5 到 30 人的軟體新創 CTO 和工程主管。你們已經在用 GitHub 和 AI 寫程式的工具，維護待辦卻一直變長：修 bug、補測試、升依賴、小改動。</p>
+        <p class="prose">我在找幾位一起試的夥伴。Pilot 刻意做小。你沒有明確授權的專案，系統不會跑。</p>
+        <dl class="spec">
+          <dt>期間</dt>
+          <dd>1–2 週</dd>
+          <dt>專案</dt>
+          <dd>1 個，而且要你授權</dd>
+          <dt>工作</dt>
+          <dd>最多 5 個低風險的 issue</dd>
+          <dt>審查</dt>
+          <dd>每張 PR 都由人看</dd>
+          <dt>價格</dt>
+          <dd>免費，或約 £500</dd>
+        </dl>
+        <div class="cta-row">
+          <a class="button" href="https://docs.google.com/forms/d/e/1FAIpQLSdcu59DEmhPY6L9ACcldA_53HfuP5lw2MU3i88GKfy2r6gr9g/viewform">加入 pilot／預約聊聊</a>
+          <a class="quiet" href="https://docs.google.com/forms/d/e/1FAIpQLSfZh7CwGon-JaBn3jCNt1xi-JmAb0YNw9LavTTHIvuqcaiMLQ/viewform" lang="en">English form</a>
+        </div>
+      </div>
+    </section>
+
+    <section class="block" id="principles" aria-labelledby="principles-title">
+      <div class="wrap">
+        <p class="kicker">03 — 原則</p>
+        <h2 id="principles-title">會守住的事，以及這次不會做的事。</h2>
+        <div class="split">
+          <div>
+            <h3>原則</h3>
+            <ol class="rules">
+              <li>用現成的基礎設施，不自己重做一套。</li>
+              <li>Agent 的執行環境和控制層拆開。</li>
+              <li>每個對外操作都要冪等。</li>
+              <li>重試不會開出重複的 PR。</li>
+              <li>Agent session 閒著，不算任務完成。</li>
+              <li>每張 PR 都由人 review。</li>
+              <li>成本、人介入了多少、失敗原因，都要留下紀錄。</li>
+              <li>絕不在未經授權的專案上跑。</li>
+            </ol>
+          </div>
+          <div>
+            <h3>這次實驗不做</h3>
+            <ul class="wont">
+              <li>SaaS 註冊與上手</li>
+              <li>收費</li>
+              <li>RBAC / SSO</li>
+              <li>多租戶</li>
+              <li>自建 agent harness</li>
+              <li>自建排程器</li>
+              <li>多模型路由</li>
+              <li>自動 merge</li>
+              <li>部署自動化</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="block" id="status" aria-labelledby="status-title">
+      <div class="wrap">
+        <p class="kicker">04 — 公開建造</p>
+        <h2 id="status-title">第一天——目前什麼都不能用；正在公開建造。</h2>
+        <p class="prose">現在沒有能運作的 pipeline。這一頁講的是實驗，不是一個打開就能用的產品。Ray Shih 一個人做，從 2026 年 10 月 26 日到 11 月 24 日。進度會照實公開，失敗也一樣。11 月 24 日實驗結束，結論是 Go、Pivot，或 Stop。</p>
+        <p class="prose"><a class="repo" href="https://github.com/rayshih/software-factory">https://github.com/rayshih/software-factory</a></p>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="wrap">
+      <p>© 2026 Ray Shih</p>
+    </div>
+  </footer>
+</body>
+</html>
