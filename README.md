@@ -37,7 +37,7 @@ flowchart LR
 SaaS onboarding, billing, RBAC/SSO, multi-tenancy, a custom agent harness, a custom scheduler, multi-model routing, auto-merge, deploy automation.
 
 ## Status
-Day 1 — planning. No working pipeline yet. Results will be published here as they happen, including failures. See [PLAN.md](PLAN.md) and [benchmarks](benchmarks/BENCHMARK_ISSUES.md).
+Day 1 — planning. No working pipeline yet. Results will be published here as they happen, including failures. See [PLAN.md](PLAN.md), [SETUP.md](SETUP.md) (GitHub App and repo safety), and [benchmarks](benchmarks/BENCHMARK_ISSUES.md).
 
 ## Join the pilot
 Startup CTO or engineering lead with a growing maintenance backlog? I'm looking for a few design partners to try this on real (low-risk) issues.
