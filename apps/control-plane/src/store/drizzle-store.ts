@@ -1,9 +1,8 @@
 import { randomUUID } from "node:crypto";
-import { and, desc, eq, inArray, max } from "drizzle-orm";
+import { and, desc, eq, inArray, max, or, sql } from "drizzle-orm";
 import { formatUsd } from "../money.js";
 import { idempotencyKey } from "../tasks/ids.js";
 import { ACTIVE_STATUSES, type TaskStatus } from "../tasks/status.js";
-import { isUniqueViolation } from "../github/errors.js";
 import type { AppDatabase } from "../db/client.js";
 import { taskEvents, tasks, webhookDeliveries } from "../db/schema.js";
 import type {
@@ -16,6 +15,13 @@ import type {
   TaskStore,
   UpdateTaskPatch,
 } from "./types.js";
+
+/**
+ * A processing claim older than this is treated as abandoned (the worker crashed
+ * or never finished). Webhook handling should finish in seconds, so a later
+ * redelivery can take the row. A fresher claim belongs to someone else.
+ */
+export const DELIVERY_CLAIM_STALE_AFTER = "2 minutes";
 
 type TaskRow = typeof tasks.$inferSelect;
 type EventRow = typeof taskEvents.$inferSelect;
@@ -142,37 +148,44 @@ export function createTaskStore(db: AppDatabase): TaskStore {
     },
 
     async claimDelivery(input) {
-      const existing = await findDelivery(db, input.deliveryId);
-      if (existing?.status === "processed") return "duplicate";
-      if (!existing) {
-        try {
-          await db.insert(webhookDeliveries).values({
-            deliveryId: input.deliveryId,
+      const now = new Date();
+      const claimed = await db
+        .insert(webhookDeliveries)
+        .values({
+          deliveryId: input.deliveryId,
+          eventName: input.eventName,
+          action: input.action,
+          repo: input.repo,
+          status: "processing",
+          disposition: "processing",
+          receivedAt: now,
+          claimedAt: now,
+        })
+        .onConflictDoUpdate({
+          target: webhookDeliveries.deliveryId,
+          set: {
             eventName: input.eventName,
             action: input.action,
             repo: input.repo,
             status: "processing",
             disposition: "processing",
-            receivedAt: new Date(),
-          });
-          return "process";
-        } catch (error) {
-          if (!isUniqueViolation(error)) throw error;
-          const raced = await findDelivery(db, input.deliveryId);
-          if (raced?.status === "processed") return "duplicate";
-          return "process";
-        }
-      }
-      await db
-        .update(webhookDeliveries)
-        .set({
-          status: "processing",
-          eventName: input.eventName,
-          action: input.action,
-          repo: input.repo,
+            claimedAt: sql`now()`,
+          },
+          setWhere: or(
+            eq(webhookDeliveries.status, "failed"),
+            and(
+              eq(webhookDeliveries.status, "processing"),
+              sql`${webhookDeliveries.claimedAt} < ${sql.raw(`now() - interval '${DELIVERY_CLAIM_STALE_AFTER}'`)}`,
+            ),
+          ),
         })
-        .where(eq(webhookDeliveries.deliveryId, input.deliveryId));
-      return "process";
+        .returning({ deliveryId: webhookDeliveries.deliveryId });
+      if (claimed.length > 0) return "process";
+
+      const existing = await findDelivery(db, input.deliveryId);
+      if (!existing) throw new Error(`delivery ${input.deliveryId} disappeared during claim`);
+      if (existing.status === "processed") return "duplicate";
+      return "in_progress";
     },
 
     async finishDelivery(deliveryId, status, disposition) {
@@ -260,6 +273,7 @@ function mapDelivery(row: DeliveryRow): DeliveryRecord {
     status: row.status as DeliveryStatus,
     disposition: row.disposition,
     receivedAt: asDate(row.receivedAt),
+    claimedAt: asDate(row.claimedAt),
   };
 }
 

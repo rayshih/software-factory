@@ -28,7 +28,19 @@ export async function openDatabase(databaseUrl: string): Promise<{
   close: () => Promise<void>;
 }> {
   const sql = createPostgresClient(databaseUrl);
-  await applyMigrations(postgresExecutor(sql));
+  try {
+    // The pool may hand each statement a different connection. Migrations need
+    // one session so the advisory lock and the transaction stay together.
+    const session = await sql.reserve();
+    try {
+      await applyMigrations(postgresExecutor(session));
+    } finally {
+      session.release();
+    }
+  } catch (error) {
+    await sql.end({ timeout: 5 });
+    throw error;
+  }
   const db = drizzle(sql, { schema });
   return {
     store: createTaskStore(db),

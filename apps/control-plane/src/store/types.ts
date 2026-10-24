@@ -85,6 +85,8 @@ export interface DeliveryRecord {
   status: DeliveryStatus;
   disposition: string;
   receivedAt: Date;
+  /** When the current processing claim started. Moved forward on each reclaim. */
+  claimedAt: Date;
 }
 
 export interface ClaimDeliveryInput {
@@ -109,7 +111,12 @@ export interface TaskStore {
   listTasks(): Promise<TaskRecord[]>;
   appendEvent(input: AppendEventInput): Promise<TaskEventRecord>;
   listEvents(taskId: string): Promise<TaskEventRecord[]>;
-  claimDelivery(input: ClaimDeliveryInput): Promise<"process" | "duplicate">;
+  /**
+   * `process` means this caller owns the delivery.
+   * `duplicate` means it was already processed.
+   * `in_progress` means another caller owns a claim that is still fresh.
+   */
+  claimDelivery(input: ClaimDeliveryInput): Promise<"process" | "duplicate" | "in_progress">;
   finishDelivery(deliveryId: string, status: DeliveryStatus, disposition: string): Promise<void>;
   getDelivery(deliveryId: string): Promise<DeliveryRecord | null>;
 }

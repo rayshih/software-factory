@@ -1,8 +1,36 @@
 import { randomUUID } from "node:crypto";
+import { PGlite } from "@electric-sql/pglite";
+import { drizzle } from "drizzle-orm/pglite";
 import { describe, expect, it } from "vitest";
+import { applyMigrations } from "../src/db/migrate.js";
+import * as schema from "../src/db/schema.js";
+import type { AppDatabase } from "../src/db/client.js";
 import { isUniqueViolation } from "../src/github/errors.js";
+import { createTaskStore, DELIVERY_CLAIM_STALE_AFTER } from "../src/store/drizzle-store.js";
+import type { TaskStore } from "../src/store/types.js";
 import { branchName } from "../src/tasks/ids.js";
 import { createTestStore, fixedClock } from "./helpers.js";
+
+const delivery = {
+  eventName: "issues",
+  action: "labeled" as string | null,
+  repo: "rayshih/sf-demo-todo-api",
+};
+
+async function createClaimStore(): Promise<{ store: TaskStore; client: PGlite }> {
+  const client = new PGlite();
+  await applyMigrations({
+    async exec(sql) {
+      await client.exec(sql);
+    },
+    async query<T extends Record<string, unknown>>(sql: string) {
+      const result = await client.query<T>(sql);
+      return result.rows;
+    },
+  });
+  const db = drizzle(client, { schema });
+  return { store: createTaskStore(db as unknown as AppDatabase), client };
+}
 
 describe("task store", () => {
   it("rejects a second active task for the same issue and appends events only", async () => {
@@ -94,5 +122,29 @@ describe("task store", () => {
         repo: "rayshih/sf-demo-todo-api",
       }),
     ).toBe("process");
+  });
+
+  it("lets only one concurrent claim win while the other claim is fresh", async () => {
+    const { store } = await createClaimStore();
+    const input = { deliveryId: "same-delivery", ...delivery };
+    const results = await Promise.all([store.claimDelivery(input), store.claimDelivery(input)]);
+    expect(results.filter((result) => result === "process")).toHaveLength(1);
+    expect(results.filter((result) => result === "in_progress")).toHaveLength(1);
+
+    expect(await store.claimDelivery(input)).toBe("in_progress");
+  });
+
+  it("reclaims a processing delivery after the claim goes stale", async () => {
+    const { store, client } = await createClaimStore();
+    const input = { deliveryId: "abandoned", ...delivery };
+    expect(await store.claimDelivery(input)).toBe("process");
+    await client.exec(
+      `UPDATE webhook_deliveries SET claimed_at = now() - interval '${DELIVERY_CLAIM_STALE_AFTER}' - interval '1 second' WHERE delivery_id = 'abandoned'`,
+    );
+    expect(await store.claimDelivery(input)).toBe("process");
+    const row = await client.query<{ status: string }>(
+      `SELECT status FROM webhook_deliveries WHERE delivery_id = 'abandoned'`,
+    );
+    expect(row.rows[0]?.status).toBe("processing");
   });
 });
