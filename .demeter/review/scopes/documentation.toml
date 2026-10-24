@@ -1,0 +1,26 @@
+scope = "documentation"
+display_name = "Documentation and public content"
+traits = ["factory_safety"]
+
+[paths]
+includes = ["README.md", "SETUP.md", "LICENSE", "docs/**", "content/**"]
+excludes = []
+
+[ownership]
+includes = ["Setup documentation, public updates, licensing, and English and Traditional Chinese landing pages."]
+excludes = ["Agent and review instructions, project plans, benchmarks, and metrics."]
+
+[classification]
+guidance = "Verify claims against implemented behavior and recorded evidence. Static pages under docs are deployed content. Keep translated product claims aligned and distinguish planned work from delivered capabilities."
+
+[[allowed_changes]]
+label = "documentation:accurate_cleanup"
+guidance = "Corrects wording, links, formatting, or translations without changing product promises, setup permissions, or factual meaning."
+
+[[needs_review_changes]]
+label = "documentation:public_or_setup_change"
+guidance = "Changes public claims, setup instructions, licensing, pilot terms, or landing-page behavior or presentation. Confirm accuracy and preview affected pages."
+
+[[not_allowed_changes]]
+label = "documentation:misrepresented_capability"
+guidance = "Presents planned integrations as working, advertises unsupported guarantees, or claims repository authorization or protections without evidence."
