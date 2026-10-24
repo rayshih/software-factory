@@ -58,6 +58,10 @@ export interface GithubWebhookResult {
   body: Record<string, unknown>;
 }
 
+function inProgress(): GithubWebhookResult {
+  return { status: 500, body: { ok: false, error: "delivery in progress" } };
+}
+
 export async function handleGithubWebhook(
   deps: WebhookDependencies,
   input: GithubWebhookInput,
@@ -82,6 +86,7 @@ export async function handleGithubWebhook(
       repo: null,
     });
     if (claim === "duplicate") return { status: 200, body: { ok: true, disposition: "duplicate" } };
+    if (claim === "in_progress") return inProgress();
     await deps.store.finishDelivery(deliveryId, "processed", "invalid_json");
     return { status: 200, body: { ok: true, disposition: "invalid_json" } };
   }
@@ -92,6 +97,10 @@ export async function handleGithubWebhook(
   if (claim === "duplicate") {
     return { status: 200, body: { ok: true, disposition: "duplicate" } };
   }
+  // A fresh claim belongs to another request. 500 asks GitHub to retry.
+  // A finished winner then looks like a duplicate; a crashed winner is stale
+  // and the retry can take the row.
+  if (claim === "in_progress") return inProgress();
 
   try {
     const result = await dispatch(deps, eventName, payload, repo);

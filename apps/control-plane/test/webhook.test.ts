@@ -76,6 +76,50 @@ describe("delivery dedupe", () => {
     expect(await deps.store.listTasks()).toHaveLength(1);
   });
 
+  it("returns 500 while another caller holds a fresh claim and does not enqueue", async () => {
+    const { deps, enqueued } = await createDeps();
+    expect(
+      await deps.store.claimDelivery({
+        deliveryId: "held",
+        eventName: "issues",
+        action: "labeled",
+        repo: "rayshih/sf-demo-todo-api",
+      }),
+    ).toBe("process");
+
+    const response = await postGithub(deps, "issues", "held", labeledPayload());
+    expect(response.status).toBe(500);
+    expect(((await response.json()) as { error: string }).error).toBe("delivery in progress");
+    expect(enqueued).toEqual([]);
+    expect(await deps.store.listTasks()).toHaveLength(0);
+    expect((await deps.store.getDelivery("held"))?.status).toBe("processing");
+  });
+
+  it("does not finish a fresh claim when a redelivery body is not json", async () => {
+    const { deps } = await createDeps();
+    await deps.store.claimDelivery({
+      deliveryId: "held-json",
+      eventName: "issues",
+      action: null,
+      repo: null,
+    });
+    const { signGithubBody } = await import("../src/github/signature.js");
+    const { createApp } = await import("../src/app.js");
+    const raw = Buffer.from("not-json");
+    const response = await createApp(deps).request("/webhooks/github", {
+      method: "POST",
+      headers: {
+        "x-github-event": "issues",
+        "x-github-delivery": "held-json",
+        "x-hub-signature-256": signGithubBody(raw, deps.webhookSecret),
+      },
+      body: raw,
+    });
+    expect(response.status).toBe(500);
+    expect((await deps.store.getDelivery("held-json"))?.status).toBe("processing");
+    expect((await deps.store.getDelivery("held-json"))?.disposition).toBe("processing");
+  });
+
   it("returns 400 when the delivery id is missing and does not record a task", async () => {
     const { deps } = await createDeps();
     const { signGithubBody } = await import("../src/github/signature.js");
