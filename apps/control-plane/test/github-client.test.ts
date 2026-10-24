@@ -106,6 +106,65 @@ describe("FakeGitHub", () => {
     expect(github.pullsCreated).toHaveLength(0);
   });
 
+  it("does not reuse an open pull request targeting a different base branch", async () => {
+    const github = new FakeGitHub();
+    github.seedRepo(repo);
+    await github.ensureBranch({
+      installationId: 1,
+      repo,
+      branch: "release",
+      baseBranch: "main",
+    });
+    const mainPull = github.seedOpenPullRequest(repo, "factory/issue-7", "main");
+    const releasePull = await github.openPullRequest({
+      installationId: 1,
+      repo,
+      headBranch: "factory/issue-7",
+      baseBranch: "release",
+      title: "Release fix",
+      body: "release body",
+    });
+    expect(releasePull.created).toBe(true);
+    expect(releasePull.number).not.toBe(mainPull.number);
+    expect(github.openPulls(repo)).toHaveLength(2);
+  });
+
+  it("recognizes an earlier content hash after a later push", async () => {
+    const github = new FakeGitHub();
+    github.seedRepo(repo);
+    await github.ensureBranch({
+      installationId: 1,
+      repo,
+      branch: "factory/issue-7",
+      baseBranch: "main",
+    });
+    const first = await github.pushFiles({
+      installationId: 1,
+      repo,
+      branch: "factory/issue-7",
+      issueNumber: 7,
+      files,
+    });
+    const second = await github.pushFiles({
+      installationId: 1,
+      repo,
+      branch: "factory/issue-7",
+      issueNumber: 7,
+      files: [{ path: "src/other.ts", content: "export const other = true;\n" }],
+    });
+    const repeated = await github.pushFiles({
+      installationId: 1,
+      repo,
+      branch: "factory/issue-7",
+      issueNumber: 7,
+      files,
+    });
+    expect(first.created).toBe(true);
+    expect(second.created).toBe(true);
+    expect(repeated).toEqual({ sha: second.sha, created: false });
+    expect(github.pushesCreated).toBe(2);
+  });
+
   it("posts one issue comment per marker", async () => {
     const github = new FakeGitHub();
     github.seedRepo(repo);

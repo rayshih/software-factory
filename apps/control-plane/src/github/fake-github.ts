@@ -1,4 +1,4 @@
-import { contentHash, messageHasContentHash, type FileChange } from "./content-hash.js";
+import { contentHash, type FileChange } from "./content-hash.js";
 import type {
   BranchComparison,
   GitHubClient,
@@ -11,6 +11,7 @@ interface BranchState {
   sha: string;
   message: string;
   commits: number;
+  contentHashes: Set<string>;
 }
 
 interface PullState {
@@ -69,7 +70,9 @@ export class FakeGitHub implements GitHubClient {
     this.repos.set(fullName, {
       defaultBranch,
       baseSha,
-      branches: new Map([[defaultBranch, { sha: baseSha, message: "init", commits: 0 }]]),
+      branches: new Map([
+        [defaultBranch, { sha: baseSha, message: "init", commits: 0, contentHashes: new Set() }],
+      ]),
       pulls: [],
       comments: [],
       nextPr: 1,
@@ -86,6 +89,7 @@ export class FakeGitHub implements GitHubClient {
         sha: `seed-${headBranch}`,
         message: "seeded ahead",
         commits: 1,
+        contentHashes: new Set(),
       });
     }
     const number = repo.nextPr++;
@@ -122,7 +126,12 @@ export class FakeGitHub implements GitHubClient {
     if (existing) return { sha: existing.sha, created: false };
     const base = repo.branches.get(input.baseBranch);
     if (!base) throw new Error(`base branch ${input.baseBranch} does not exist`);
-    repo.branches.set(input.branch, { sha: base.sha, message: base.message, commits: 0 });
+    repo.branches.set(input.branch, {
+      sha: base.sha,
+      message: base.message,
+      commits: 0,
+      contentHashes: new Set(base.contentHashes),
+    });
     return { sha: base.sha, created: true };
   }
 
@@ -138,13 +147,14 @@ export class FakeGitHub implements GitHubClient {
     const branch = repo.branches.get(input.branch);
     if (!branch) throw new Error(`branch ${input.branch} does not exist`);
     const hash = contentHash(input.files);
-    if (messageHasContentHash(branch.message, hash)) {
+    if (branch.contentHashes.has(hash)) {
       return { sha: branch.sha, created: false };
     }
     const sha = `commit-${repo.nextCommit++}`;
     branch.sha = sha;
     branch.message = `Apply changes for issue #${input.issueNumber}\n\nFactory-Content-Hash: ${hash}\n`;
     branch.commits += 1;
+    branch.contentHashes.add(hash);
     this.pushesCreated += 1;
     return { sha, created: true };
   }
@@ -176,7 +186,10 @@ export class FakeGitHub implements GitHubClient {
     this.openPullRequestCalls += 1;
     const repo = this.repo(input.repo);
     const existing = repo.pulls.find(
-      (pull) => pull.state === "open" && pull.headBranch === input.headBranch,
+      (pull) =>
+        pull.state === "open" &&
+        pull.headBranch === input.headBranch &&
+        pull.baseBranch === input.baseBranch,
     );
     if (existing) {
       existing.title = input.title;

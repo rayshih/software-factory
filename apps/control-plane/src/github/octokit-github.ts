@@ -78,7 +78,7 @@ export class OctokitGitHub implements GitHubClient {
     if (!parentSha) throw new Error(`branch ${input.branch} does not exist on ${input.repo}`);
     const hash = contentHash(input.files);
     const parent = await octokit.rest.git.getCommit({ owner, repo, commit_sha: parentSha });
-    if (messageHasContentHash(parent.data.message, hash)) {
+    if (await this.branchHasContentHash(octokit, owner, repo, input.branch, hash)) {
       return { sha: parentSha, created: false };
     }
     const tree = await octokit.rest.git.createTree({
@@ -110,11 +110,11 @@ export class OctokitGitHub implements GitHubClient {
     } catch (error) {
       if (isHttpStatus(error, 422) || isHttpStatus(error, 409)) {
         const head = await this.readRef(octokit, owner, repo, input.branch);
-        if (head) {
-          const headCommit = await octokit.rest.git.getCommit({ owner, repo, commit_sha: head });
-          if (messageHasContentHash(headCommit.data.message, hash)) {
-            return { sha: head, created: false };
-          }
+        if (
+          head &&
+          (await this.branchHasContentHash(octokit, owner, repo, input.branch, hash))
+        ) {
+          return { sha: head, created: false };
         }
       }
       throw error;
@@ -160,7 +160,13 @@ export class OctokitGitHub implements GitHubClient {
   }): Promise<PullRequestRef> {
     const octokit = await this.octokit(input.installationId);
     const { owner, repo } = parseRepo(input.repo);
-    const existing = await this.findOpenPull(octokit, owner, repo, input.headBranch);
+    const existing = await this.findOpenPull(
+      octokit,
+      owner,
+      repo,
+      input.headBranch,
+      input.baseBranch,
+    );
     if (existing) {
       await octokit.rest.pulls.update({
         owner,
@@ -171,15 +177,29 @@ export class OctokitGitHub implements GitHubClient {
       });
       return { number: existing.number, url: existing.url, created: false };
     }
-    const created = await octokit.rest.pulls.create({
-      owner,
-      repo,
-      title: input.title,
-      body: input.body,
-      head: input.headBranch,
-      base: input.baseBranch,
-    });
-    return { number: created.data.number, url: created.data.html_url, created: true };
+    try {
+      const created = await octokit.rest.pulls.create({
+        owner,
+        repo,
+        title: input.title,
+        body: input.body,
+        head: input.headBranch,
+        base: input.baseBranch,
+      });
+      return { number: created.data.number, url: created.data.html_url, created: true };
+    } catch (error) {
+      if (isHttpStatus(error, 422) || isHttpStatus(error, 409)) {
+        const raced = await this.findOpenPull(
+          octokit,
+          owner,
+          repo,
+          input.headBranch,
+          input.baseBranch,
+        );
+        if (raced) return { number: raced.number, url: raced.url, created: false };
+      }
+      throw error;
+    }
   }
 
   async commentOnIssue(input: {
@@ -241,6 +261,7 @@ export class OctokitGitHub implements GitHubClient {
     owner: string,
     repo: string,
     headBranch: string,
+    baseBranch: string,
   ): Promise<{ number: number; url: string } | null> {
     const response = await octokit.rest.pulls.list({
       owner,
@@ -249,9 +270,37 @@ export class OctokitGitHub implements GitHubClient {
       head: `${owner}:${headBranch}`,
       per_page: 20,
     });
-    const match = response.data.find((pull) => pull.head.ref === headBranch);
+    const fullName = `${owner}/${repo}`.toLowerCase();
+    const match = response.data.find(
+      (pull) =>
+        pull.head.ref === headBranch &&
+        pull.head.repo?.full_name.toLowerCase() === fullName &&
+        pull.base.ref === baseBranch,
+    );
     if (!match) return null;
     return { number: match.number, url: match.html_url };
+  }
+
+  private async branchHasContentHash(
+    octokit: Octokit,
+    owner: string,
+    repo: string,
+    branch: string,
+    hash: string,
+  ): Promise<boolean> {
+    for (let page = 1; ; page += 1) {
+      const commits = await octokit.rest.repos.listCommits({
+        owner,
+        repo,
+        sha: branch,
+        per_page: 100,
+        page,
+      });
+      if (commits.data.some((commit) => messageHasContentHash(commit.commit.message, hash))) {
+        return true;
+      }
+      if (commits.data.length < 100) return false;
+    }
   }
 }
 
