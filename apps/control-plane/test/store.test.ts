@@ -7,9 +7,19 @@ import * as schema from "../src/db/schema.js";
 import type { AppDatabase } from "../src/db/client.js";
 import { isUniqueViolation } from "../src/github/errors.js";
 import { createTaskStore, DELIVERY_CLAIM_STALE_AFTER } from "../src/store/drizzle-store.js";
-import type { TaskStore } from "../src/store/types.js";
+import {
+  TaskStatusConflict,
+  type ClaimDeliveryResult,
+  type TaskStore,
+} from "../src/store/types.js";
 import { branchName } from "../src/tasks/ids.js";
 import { createTestStore, fixedClock } from "./helpers.js";
+
+function ownedGeneration(result: ClaimDeliveryResult): number {
+  expect(result.outcome).toBe("process");
+  if (result.outcome !== "process") throw new Error(result.outcome);
+  return result.generation;
+}
 
 const delivery = {
   eventName: "issues",
@@ -61,7 +71,11 @@ describe("task store", () => {
       }),
     ).rejects.toSatisfy((error: unknown) => isUniqueViolation(error));
 
-    await store.updateTask(first.id, { status: "failed", failureCategory: "idle_without_pr" });
+    await store.updateTask(
+      first.id,
+      { status: "failed", failureCategory: "idle_without_pr" },
+      "queued",
+    );
     const second = await store.createTask({
       id: randomUUID(),
       repo: "rayshih/sf-demo-todo-api",
@@ -87,64 +101,104 @@ describe("task store", () => {
 
   it("records a delivery once and lets a failed delivery be claimed again", async () => {
     const store = await createTestStore();
+    const first = await store.claimDelivery({
+      deliveryId: "abc",
+      eventName: "issues",
+      action: "labeled",
+      repo: "rayshih/sf-demo-todo-api",
+    });
+    expect(await store.finishDelivery("abc", "processed", "queued", ownedGeneration(first))).toBe(
+      true,
+    );
     expect(
-      await store.claimDelivery({
-        deliveryId: "abc",
-        eventName: "issues",
-        action: "labeled",
-        repo: "rayshih/sf-demo-todo-api",
-      }),
-    ).toBe("process");
-    await store.finishDelivery("abc", "processed", "queued");
-    expect(
-      await store.claimDelivery({
-        deliveryId: "abc",
-        eventName: "issues",
-        action: "labeled",
-        repo: "rayshih/sf-demo-todo-api",
-      }),
+      (
+        await store.claimDelivery({
+          deliveryId: "abc",
+          eventName: "issues",
+          action: "labeled",
+          repo: "rayshih/sf-demo-todo-api",
+        })
+      ).outcome,
     ).toBe("duplicate");
 
-    expect(
-      await store.claimDelivery({
-        deliveryId: "retry-me",
-        eventName: "issues",
-        action: "labeled",
-        repo: "rayshih/sf-demo-todo-api",
-      }),
-    ).toBe("process");
-    await store.finishDelivery("retry-me", "failed", "error");
-    expect(
-      await store.claimDelivery({
-        deliveryId: "retry-me",
-        eventName: "issues",
-        action: "labeled",
-        repo: "rayshih/sf-demo-todo-api",
-      }),
-    ).toBe("process");
+    const retry = await store.claimDelivery({
+      deliveryId: "retry-me",
+      eventName: "issues",
+      action: "labeled",
+      repo: "rayshih/sf-demo-todo-api",
+    });
+    expect(await store.finishDelivery("retry-me", "failed", "error", ownedGeneration(retry))).toBe(
+      true,
+    );
+    const again = await store.claimDelivery({
+      deliveryId: "retry-me",
+      eventName: "issues",
+      action: "labeled",
+      repo: "rayshih/sf-demo-todo-api",
+    });
+    expect(again.outcome).toBe("process");
+    if (again.outcome === "process") expect(again.generation).toBe(ownedGeneration(retry) + 1);
   });
 
   it("lets only one concurrent claim win while the other claim is fresh", async () => {
     const { store } = await createClaimStore();
     const input = { deliveryId: "same-delivery", ...delivery };
     const results = await Promise.all([store.claimDelivery(input), store.claimDelivery(input)]);
-    expect(results.filter((result) => result === "process")).toHaveLength(1);
-    expect(results.filter((result) => result === "in_progress")).toHaveLength(1);
+    expect(results.filter((result) => result.outcome === "process")).toHaveLength(1);
+    expect(results.filter((result) => result.outcome === "in_progress")).toHaveLength(1);
 
-    expect(await store.claimDelivery(input)).toBe("in_progress");
+    expect((await store.claimDelivery(input)).outcome).toBe("in_progress");
   });
 
   it("reclaims a processing delivery after the claim goes stale", async () => {
     const { store, client } = await createClaimStore();
     const input = { deliveryId: "abandoned", ...delivery };
-    expect(await store.claimDelivery(input)).toBe("process");
+    const firstGeneration = ownedGeneration(await store.claimDelivery(input));
     await client.exec(
       `UPDATE webhook_deliveries SET claimed_at = now() - interval '${DELIVERY_CLAIM_STALE_AFTER}' - interval '1 second' WHERE delivery_id = 'abandoned'`,
     );
-    expect(await store.claimDelivery(input)).toBe("process");
+    const secondGeneration = ownedGeneration(await store.claimDelivery(input));
+    expect(secondGeneration).toBe(firstGeneration + 1);
     const row = await client.query<{ status: string }>(
       `SELECT status FROM webhook_deliveries WHERE delivery_id = 'abandoned'`,
     );
     expect(row.rows[0]?.status).toBe("processing");
+  });
+
+  it("does not let a late finish overwrite a newer claim", async () => {
+    const { store, client } = await createClaimStore();
+    const input = { deliveryId: "slow", ...delivery };
+    const firstGeneration = ownedGeneration(await store.claimDelivery(input));
+    await client.exec(
+      `UPDATE webhook_deliveries SET claimed_at = now() - interval '${DELIVERY_CLAIM_STALE_AFTER}' - interval '1 second' WHERE delivery_id = 'slow'`,
+    );
+    const secondGeneration = ownedGeneration(await store.claimDelivery(input));
+    expect(await store.finishDelivery("slow", "processed", "done", secondGeneration)).toBe(true);
+    expect(await store.finishDelivery("slow", "failed", "late", firstGeneration)).toBe(false);
+    const saved = await store.getDelivery("slow");
+    expect(saved?.status).toBe("processed");
+    expect(saved?.disposition).toBe("done");
+  });
+
+  it("changes status only from the status the caller observed", async () => {
+    const store = await createTestStore();
+    const task = await store.createTask({
+      id: randomUUID(),
+      repo: "rayshih/sf-demo-todo-api",
+      issueNumber: 9,
+      attemptGroup: 1,
+      branch: branchName(9),
+      installationId: 1,
+      issueTitle: "status",
+      issueBody: "",
+      createdAt: fixedClock.now(),
+    });
+    expect((await store.updateTask(task.id, { status: "running" }, "queued")).status).toBe(
+      "running",
+    );
+    await expect(
+      store.updateTask(task.id, { status: "failed", failureCategory: "idle_without_pr" }, "queued"),
+    ).rejects.toBeInstanceOf(TaskStatusConflict);
+    expect((await store.getTask(task.id))?.status).toBe("running");
   });
 });

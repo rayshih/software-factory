@@ -5,15 +5,16 @@ import { idempotencyKey } from "../tasks/ids.js";
 import { ACTIVE_STATUSES, type TaskStatus } from "../tasks/status.js";
 import type { AppDatabase } from "../db/client.js";
 import { taskEvents, tasks, webhookDeliveries } from "../db/schema.js";
-import type {
-  AppendEventInput,
-  CreateTaskInput,
-  DeliveryRecord,
-  DeliveryStatus,
-  TaskEventRecord,
-  TaskRecord,
-  TaskStore,
-  UpdateTaskPatch,
+import {
+  TaskStatusConflict,
+  type AppendEventInput,
+  type CreateTaskInput,
+  type DeliveryRecord,
+  type DeliveryStatus,
+  type TaskEventRecord,
+  type TaskRecord,
+  type TaskStore,
+  type UpdateTaskPatch,
 } from "./types.js";
 
 /**
@@ -78,9 +79,19 @@ export function createTaskStore(db: AppDatabase): TaskStore {
       return row ? mapTask(row) : null;
     },
 
-    async updateTask(id, patch) {
-      const [row] = await db.update(tasks).set(toUpdate(patch)).where(eq(tasks.id, id)).returning();
-      if (!row) throw new Error(`task ${id} not found`);
+    async updateTask(id, patch, expectedStatus?: TaskStatus) {
+      if (patch.status !== undefined && expectedStatus === undefined) {
+        throw new Error(`task ${id} status change requires the status the caller observed`);
+      }
+      const where =
+        expectedStatus === undefined
+          ? eq(tasks.id, id)
+          : and(eq(tasks.id, id), eq(tasks.status, expectedStatus));
+      const [row] = await db.update(tasks).set(toUpdate(patch)).where(where).returning();
+      if (!row) {
+        if (expectedStatus !== undefined) throw new TaskStatusConflict(id, expectedStatus);
+        throw new Error(`task ${id} not found`);
+      }
       return mapTask(row);
     },
 
@@ -160,6 +171,7 @@ export function createTaskStore(db: AppDatabase): TaskStore {
           disposition: "processing",
           receivedAt: now,
           claimedAt: now,
+          claimGeneration: 1,
         })
         .onConflictDoUpdate({
           target: webhookDeliveries.deliveryId,
@@ -170,6 +182,7 @@ export function createTaskStore(db: AppDatabase): TaskStore {
             status: "processing",
             disposition: "processing",
             claimedAt: sql`now()`,
+            claimGeneration: sql`${webhookDeliveries.claimGeneration} + 1`,
           },
           setWhere: or(
             eq(webhookDeliveries.status, "failed"),
@@ -179,20 +192,31 @@ export function createTaskStore(db: AppDatabase): TaskStore {
             ),
           ),
         })
-        .returning({ deliveryId: webhookDeliveries.deliveryId });
-      if (claimed.length > 0) return "process";
+        .returning({
+          deliveryId: webhookDeliveries.deliveryId,
+          claimGeneration: webhookDeliveries.claimGeneration,
+        });
+      const owned = claimed[0];
+      if (owned) return { outcome: "process" as const, generation: Number(owned.claimGeneration) };
 
       const existing = await findDelivery(db, input.deliveryId);
       if (!existing) throw new Error(`delivery ${input.deliveryId} disappeared during claim`);
-      if (existing.status === "processed") return "duplicate";
-      return "in_progress";
+      if (existing.status === "processed") return { outcome: "duplicate" as const };
+      return { outcome: "in_progress" as const };
     },
 
-    async finishDelivery(deliveryId, status, disposition) {
-      await db
+    async finishDelivery(deliveryId, status, disposition, generation) {
+      const updated = await db
         .update(webhookDeliveries)
         .set({ status, disposition })
-        .where(eq(webhookDeliveries.deliveryId, deliveryId));
+        .where(
+          and(
+            eq(webhookDeliveries.deliveryId, deliveryId),
+            eq(webhookDeliveries.claimGeneration, generation),
+          ),
+        )
+        .returning({ deliveryId: webhookDeliveries.deliveryId });
+      return updated.length > 0;
     },
 
     async getDelivery(deliveryId) {

@@ -40,6 +40,19 @@ export interface CreateTaskInput {
   createdAt: Date;
 }
 
+/** The update ran, but the task was no longer in the status the caller had observed. */
+export class TaskStatusConflict extends Error {
+  readonly taskId: string;
+  readonly expectedStatus: TaskStatus;
+
+  constructor(taskId: string, expectedStatus: TaskStatus) {
+    super(`task ${taskId} is no longer ${expectedStatus}`);
+    this.name = "TaskStatusConflict";
+    this.taskId = taskId;
+    this.expectedStatus = expectedStatus;
+  }
+}
+
 export interface UpdateTaskPatch {
   status?: TaskStatus;
   prNumber?: number | null;
@@ -96,15 +109,26 @@ export interface ClaimDeliveryInput {
   repo: string | null;
 }
 
+export type ClaimDeliveryResult =
+  | { outcome: "process"; generation: number }
+  | { outcome: "duplicate" }
+  | { outcome: "in_progress" };
+
 /**
  * Append-only task events. There is intentionally no update or delete.
- * Webhook deliveries are updated only to move processing → processed/failed.
+ * Webhook deliveries are updated only to move processing → processed/failed,
+ * and only by the claim generation that still owns the row.
  */
 export interface TaskStore {
   nextAttemptGroup(repo: string, issueNumber: number): Promise<number>;
   createTask(input: CreateTaskInput): Promise<TaskRecord>;
   getTask(id: string): Promise<TaskRecord | null>;
-  updateTask(id: string, patch: UpdateTaskPatch): Promise<TaskRecord>;
+  /**
+   * When `patch.status` is set, `expectedStatus` is the status the caller
+   * observed. The write matches that status, so a concurrent transition is
+   * not overwritten. Allowed edges are checked by `transitionTask`.
+   */
+  updateTask(id: string, patch: UpdateTaskPatch, expectedStatus?: TaskStatus): Promise<TaskRecord>;
   findActiveTask(repo: string, issueNumber: number): Promise<TaskRecord | null>;
   findByBranch(repo: string, branch: string): Promise<TaskRecord | null>;
   findByPullRequest(repo: string, prNumber: number): Promise<TaskRecord | null>;
@@ -112,11 +136,20 @@ export interface TaskStore {
   appendEvent(input: AppendEventInput): Promise<TaskEventRecord>;
   listEvents(taskId: string): Promise<TaskEventRecord[]>;
   /**
-   * `process` means this caller owns the delivery.
-   * `duplicate` means it was already processed.
-   * `in_progress` means another caller owns a claim that is still fresh.
+   * `process` means this caller owns the delivery, and `generation` is the
+   * fence `finishDelivery` must present. `duplicate` means it was already
+   * processed. `in_progress` means another caller owns a claim that is still fresh.
    */
-  claimDelivery(input: ClaimDeliveryInput): Promise<"process" | "duplicate" | "in_progress">;
-  finishDelivery(deliveryId: string, status: DeliveryStatus, disposition: string): Promise<void>;
+  claimDelivery(input: ClaimDeliveryInput): Promise<ClaimDeliveryResult>;
+  /**
+   * Writes the outcome only while `generation` still owns the row.
+   * Returns false when a newer claim has taken the delivery.
+   */
+  finishDelivery(
+    deliveryId: string,
+    status: DeliveryStatus,
+    disposition: string,
+    generation: number,
+  ): Promise<boolean>;
   getDelivery(deliveryId: string): Promise<DeliveryRecord | null>;
 }

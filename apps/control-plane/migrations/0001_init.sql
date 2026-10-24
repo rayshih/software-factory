@@ -80,6 +80,7 @@ CREATE TABLE IF NOT EXISTS webhook_deliveries (
   disposition text NOT NULL,
   received_at timestamptz NOT NULL DEFAULT now(),
   claimed_at timestamptz NOT NULL DEFAULT now(),
+  claim_generation integer NOT NULL DEFAULT 1,
   CONSTRAINT webhook_deliveries_status_check CHECK (status IN ('processing', 'processed', 'failed'))
 );
 

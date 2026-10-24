@@ -85,6 +85,7 @@ export const webhookDeliveries = pgTable(
     disposition: text("disposition").notNull(),
     receivedAt: timestamp("received_at", { withTimezone: true }).notNull(),
     claimedAt: timestamp("claimed_at", { withTimezone: true }).notNull(),
+    claimGeneration: integer("claim_generation").notNull(),
   },
   (table) => [
     check(
