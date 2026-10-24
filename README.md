@@ -5,6 +5,7 @@
 A 30-day Build in Public experiment (26 Oct – 24 Nov 2026) by Ray Shih, solo founder.
 
 Landing page: https://rayshih.github.io/software-factory/
+中文：https://rayshih.github.io/software-factory/zh-tw/
 
 ## Thesis
 Coding agents can already write code. What teams lack is the *factory* around them: a queue, execution control, failure recovery, CI verification, human review, an audit trail and cost visibility. Software Factory is that control layer — built by integrating existing infrastructure, not by building another agent.
