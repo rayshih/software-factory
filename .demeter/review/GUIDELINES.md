@@ -13,10 +13,11 @@ merge-when-ready, automated merge queues, and merge API calls by agents.
 
 Automated review and nursing are disabled. The stored
 `review_only` request is a future capability preference, not activation or
-write authority. Draft readiness remains disabled. Scan labels select
-candidates only; applying a label grants no permission. Changes to these
-settings, policy files, repository permissions, or external integrations
-require explicit human review and separate authorization for activation.
+write authority. Draft readiness remains disabled. PR scanning has no label
+filter and retains a limit of 10 open PRs per scan. Selection grants no
+permission. Changes to these settings, policy files, repository permissions,
+or external integrations require explicit human review and separate
+authorization for activation.
 
 ## Classification
 
