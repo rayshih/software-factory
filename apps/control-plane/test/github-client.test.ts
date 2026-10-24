@@ -165,7 +165,7 @@ describe("FakeGitHub", () => {
     expect(github.pushesCreated).toBe(2);
   });
 
-  it("posts one issue comment per marker", async () => {
+  it("posts one issue comment per marker when the body omits the marker", async () => {
     const github = new FakeGitHub();
     github.seedRepo(repo);
     const marker = "<!-- software-factory:pr-link -->";
@@ -174,18 +174,19 @@ describe("FakeGitHub", () => {
       repo,
       issueNumber: 7,
       marker,
-      body: `Opened ${marker}`,
+      body: "Opened pull request #12",
     });
     const second = await github.commentOnIssue({
       installationId: 1,
       repo,
       issueNumber: 7,
       marker,
-      body: `Opened again ${marker}`,
+      body: "Opened pull request #12",
     });
     expect(first.created).toBe(true);
     expect(second.created).toBe(false);
     expect(second.id).toBe(first.id);
     expect(github.commentsCreated).toHaveLength(1);
+    expect(github.commentsCreated[0]?.body).toContain(marker);
   });
 });

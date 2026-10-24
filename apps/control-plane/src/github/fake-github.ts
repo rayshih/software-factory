@@ -6,6 +6,7 @@ import type {
   PullRequestRef,
   PushResult,
 } from "./client.js";
+import { issueCommentBody } from "./issue-comment.js";
 
 interface BranchState {
   sha: string;
@@ -236,7 +237,7 @@ export class FakeGitHub implements GitHubClient {
     const comment: CommentState = {
       id: repo.nextComment++,
       issueNumber: input.issueNumber,
-      body: input.body,
+      body: issueCommentBody(input.body, input.marker),
     };
     repo.comments.push(comment);
     this.commentsCreated.push(comment);

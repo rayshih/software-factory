@@ -15,6 +15,7 @@ import type {
   PushResult,
 } from "./client.js";
 import { isHttpStatus } from "./errors.js";
+import { findIssueCommentByMarker, issueCommentBody } from "./issue-comment.js";
 import { parseRepo } from "./repo.js";
 
 type InstallationAuth = ReturnType<typeof createAppAuth>;
@@ -211,7 +212,7 @@ export class OctokitGitHub implements GitHubClient {
   }): Promise<IssueCommentResult> {
     const octokit = await this.octokit(input.installationId);
     const { owner, repo } = parseRepo(input.repo);
-    for (let page = 1; page <= 5; page += 1) {
+    const existingId = await findIssueCommentByMarker(input.marker, async (page) => {
       const comments = await octokit.rest.issues.listComments({
         owner,
         repo,
@@ -219,15 +220,14 @@ export class OctokitGitHub implements GitHubClient {
         per_page: 100,
         page,
       });
-      const match = comments.data.find((comment) => (comment.body ?? "").includes(input.marker));
-      if (match) return { id: match.id, created: false };
-      if (comments.data.length < 100) break;
-    }
+      return comments.data;
+    });
+    if (existingId !== null) return { id: existingId, created: false };
     const created = await octokit.rest.issues.createComment({
       owner,
       repo,
       issue_number: input.issueNumber,
-      body: input.body,
+      body: issueCommentBody(input.body, input.marker),
     });
     return { id: created.data.id, created: true };
   }
