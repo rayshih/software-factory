@@ -72,7 +72,7 @@ This week has one goal: a single working pull request, end to end, from a GitHub
 
 If you're a startup CTO or engineering lead and your maintenance backlog keeps growing — the bug fixes, test gaps, dependency bumps and small changes nobody gets to — I'd like to talk. I'm looking for a few pilot partners willing to try this on real, low-risk issues and tell me honestly whether it's useful.
 
-You can [apply for the pilot here](https://example.com/PILOT_LINK_PLACEHOLDER), or just reply and tell me what's in your backlog. I'll be posting progress every few days.
+You can [apply for the pilot here](https://docs.google.com/forms/d/e/1FAIpQLSfZh7CwGon-JaBn3jCNt1xi-JmAb0YNw9LavTTHIvuqcaiMLQ/viewform), or just reply and tell me what's in your backlog. I'll be posting progress every few days.
 
 ---
 
