@@ -10,13 +10,17 @@ export async function transitionTask(
   event: { type: string; message: string; payload?: Record<string, unknown> },
 ): Promise<TaskRecord> {
   assertCanTransition(task.status, to);
-  const updated = await deps.store.updateTask(task.id, {
-    ...patch,
-    status: to,
-    finishedAt: isTerminal(to)
-      ? (patch.finishedAt ?? deps.clock.now())
-      : (patch.finishedAt ?? null),
-  });
+  const updated = await deps.store.updateTask(
+    task.id,
+    {
+      ...patch,
+      status: to,
+      finishedAt: isTerminal(to)
+        ? (patch.finishedAt ?? deps.clock.now())
+        : (patch.finishedAt ?? null),
+    },
+    task.status,
+  );
   await deps.store.appendEvent({
     taskId: task.id,
     type: event.type,

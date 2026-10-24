@@ -4,10 +4,31 @@ import type { AgentRuntime } from "../src/agent/types.js";
 import { FakeGitHub } from "../src/github/fake-github.js";
 import { silentLogger } from "../src/log.js";
 import type { PipelineDependencies } from "../src/pipeline.js";
-import type { TaskRecord } from "../src/store/types.js";
+import type { TaskRecord, TaskStore } from "../src/store/types.js";
 import { ACCEPTED_MARKER, REJECTED_MARKER, branchName } from "../src/tasks/ids.js";
 import { applyCheckSuite, applyPullRequestClosed, applyReview } from "../src/tasks/outcomes.js";
+import type { TaskStatus } from "../src/tasks/status.js";
 import { createTestStore, fixedClock } from "./helpers.js";
+
+const stepsTo: Record<TaskStatus, readonly TaskStatus[]> = {
+  queued: [],
+  running: ["running"],
+  pr_opened: ["running", "pr_opened"],
+  ci_passed: ["running", "pr_opened", "ci_passed"],
+  ci_failed: ["running", "pr_opened", "ci_failed"],
+  needs_human: ["running", "pr_opened", "ci_passed", "needs_human"],
+  accepted: ["running", "pr_opened", "ci_passed", "needs_human", "accepted"],
+  rejected: ["running", "pr_opened", "ci_passed", "needs_human", "rejected"],
+  failed: ["failed"],
+};
+
+async function reachStatus(store: TaskStore, id: string, status: TaskStatus): Promise<void> {
+  let from: TaskStatus = "queued";
+  for (const step of stepsTo[status]) {
+    await store.updateTask(id, { status: step }, from);
+    from = step;
+  }
+}
 
 const repo = "rayshih/sf-demo-todo-api";
 
@@ -46,8 +67,8 @@ async function setup(status: TaskRecord["status"]) {
     issueBody: "",
     createdAt: fixedClock.now(),
   });
+  await reachStatus(store, created.id, status);
   const task = await store.updateTask(created.id, {
-    status,
     prNumber: 10,
     prUrl: `https://github.com/${repo}/pull/10`,
   });
