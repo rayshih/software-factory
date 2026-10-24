@@ -112,10 +112,7 @@ export class OctokitGitHub implements GitHubClient {
     } catch (error) {
       if (isHttpStatus(error, 422) || isHttpStatus(error, 409)) {
         const head = await this.readRef(octokit, owner, repo, input.branch);
-        if (
-          head &&
-          (await this.branchHasContentHash(octokit, owner, repo, input.branch, hash))
-        ) {
+        if (head && (await this.branchHasContentHash(octokit, owner, repo, input.branch, hash))) {
           return { sha: head, created: false };
         }
       }
@@ -241,10 +238,7 @@ export class OctokitGitHub implements GitHubClient {
     });
   }
 
-  private async withIssueCommentLock<T>(
-    key: string,
-    operation: () => Promise<T>,
-  ): Promise<T> {
+  private async withIssueCommentLock<T>(key: string, operation: () => Promise<T>): Promise<T> {
     const previous = issueCommentLocks.get(key) ?? Promise.resolve();
     let release!: () => void;
     const current = new Promise<void>((resolve) => {
