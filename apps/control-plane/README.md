@@ -124,6 +124,8 @@ See [`.env.example`](.env.example). Never commit real secrets.
 
 ## Deploy checklist
 
+The ordered pilot sequence, including what to leave undeployed until the stack merges, is [Environment setup sequence](#environment-setup-sequence). The list below is the same pieces without that order.
+
 1. Create a Postgres database (Neon, Render Postgres, or Fly Postgres). Copy `DATABASE_URL`.
 2. Create a [Trigger.dev](https://trigger.dev) project. Copy `TRIGGER_SECRET_KEY` and `TRIGGER_PROJECT_REF` into `.env` and into the web service.
 3. Create an Anthropic Console API key that can call Managed Agents. Set `ANTHROPIC_API_KEY` on the **worker** (Trigger.dev environment) as well as the web service. Set `ANTHROPIC_ENVIRONMENT_ID` once you have created an environment you want to reuse.
@@ -149,6 +151,20 @@ See [`.env.example`](.env.example). Never commit real secrets.
    - Check suite
 10. Leave the App installed only on `rayshih/sf-demo-todo-api` until a pilot repo is onboarded (see [SETUP.md](../../SETUP.md)).
 11. Label a test issue `factory:run`. Confirm one task row, one Trigger.dev run, and one open pull request. Do not add a merge step.
+
+## Environment setup sequence
+
+Do these in order for the pilot. Create the accounts, and set the Anthropic spend cap, before issuing an API key. The three secrets in step (e) are entered only when that service is deployed.
+
+- [ ] **(a) Accounts.** Create a Neon account, a Trigger.dev account, a Render account, and an Anthropic Console account. In the Anthropic Console, set a monthly spend cap of US$300 before creating an API key.
+- [ ] **(b) Neon.** Create the project and copy the pooled connection string into `DATABASE_URL`.
+- [ ] **(c) Trigger.dev.** Create the project. Copy the project ref into `TRIGGER_PROJECT_REF` and the production secret into `TRIGGER_SECRET_KEY`.
+- [ ] **(d) Render, not deployed yet.** Create the web service from this repo and leave the first deploy off. Root directory `.` (the workspace root). Build `pnpm install --frozen-lockfile && pnpm --filter @software-factory/control-plane build`. Start `pnpm --filter @software-factory/control-plane start`. Health check path `/health`.
+- [ ] **(e) Secrets, only at deploy time.** Do not commit these, and do not paste them into a service until the step that deploys it: `GITHUB_APP_PRIVATE_KEY_B64` (`base64 -w 0 < forgeline.pem`), a newly generated `GITHUB_WEBHOOK_SECRET`, and `ANTHROPIC_API_KEY`.
+- [ ] **(f) Worker, after [#13](https://github.com/rayshih/software-factory/pull/13) merges.** From `apps/control-plane`, run `pnpm --filter @software-factory/control-plane trigger:deploy`. On that Trigger.dev environment set `DATABASE_URL`, `GITHUB_APP_ID`, `GITHUB_APP_PRIVATE_KEY_B64`, `ALLOWED_REPOS`, `TRIGGER_SECRET_KEY`, and `TRIGGER_PROJECT_REF`. Leave `ANTHROPIC_API_KEY` unset so the first run uses the stub agent.
+- [ ] **(g) Web process, after [#8](https://github.com/rayshih/software-factory/pull/8) merges.** Deploy the Render service. Set `GITHUB_APP_ID`, `GITHUB_APP_PRIVATE_KEY_B64`, `GITHUB_WEBHOOK_SECRET`, `DATABASE_URL`, and `TRIGGER_SECRET_KEY` (the web process enqueues runs). `GET /health` should return `{ "ok": true }`.
+- [ ] **(h) Forgeline webhook.** Enable it with the Render URL `https://<host>/webhooks/github`, content type JSON, and the same `GITHUB_WEBHOOK_SECRET`. Subscribe to Issues, Issue comments, Pull requests, Pull request reviews, and Check suites. Leave the App installed only on `rayshih/sf-demo-todo-api`.
+- [ ] **(i) Smoke test.** Label one benchmark issue `factory:run` while `ANTHROPIC_API_KEY` is still unset. Confirm one task row, one Trigger.dev run, and one open pull request from the stub agent. Then set the real Anthropic key on the worker and run [B01](../../benchmarks/BENCHMARK_ISSUES.md) (`PATCH /todos/:id` returns 200 for a missing todo). Do not merge.
 
 ## Accounts and keys Ray provides
 

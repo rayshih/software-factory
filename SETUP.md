@@ -37,7 +37,7 @@ No callback URL and no OAuth. The App does not use user authorization tokens. It
 
 The webhook is inactive. It will be turned on once the control plane is deployed, and it will use a webhook secret (stored as a deploy secret, not in this repo).
 
-The control-plane deploy checklist — public URL, secret, and these event subscriptions — is in [apps/control-plane/README.md](apps/control-plane/README.md#deploy-checklist).
+The ordered account, database, worker, Render, and webhook steps are in the [environment setup sequence](apps/control-plane/README.md#environment-setup-sequence). The same subscriptions are also listed in the [deploy checklist](apps/control-plane/README.md#deploy-checklist).
 
 TODO, when that happens:
 
