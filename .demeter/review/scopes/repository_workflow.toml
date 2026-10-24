@@ -1,0 +1,26 @@
+scope = "repository_workflow"
+display_name = "Repository workflow and policy"
+traits = ["factory_safety", "system:policy_self_modification"]
+
+[paths]
+includes = [".github/**", ".gitignore", "AGENTS.md", ".demeter.json", ".demeter/review/**", "package.json", "pnpm-lock.yaml", "pnpm-workspace.yaml", "apps/*/package.json", "apps/control-plane/*.json", "apps/control-plane/*.js", "apps/control-plane/*.ts", "apps/control-plane/.prettierignore"]
+excludes = []
+
+[ownership]
+includes = ["Build and test tooling, dependencies, CI, agent instructions, and repository review configuration."]
+excludes = ["Control-plane implementation and product roadmap."]
+
+[classification]
+guidance = "Policy and CI changes require explicit review and cannot grant themselves authority. Check path filters, lockfile consistency, draft PR requirements, and the effects of automation settings."
+
+[[allowed_changes]]
+label = "workflow:nonsemantic_cleanup"
+guidance = "Formatting or explanatory comments that do not change commands, dependencies, policy meaning, validation coverage, or permissions."
+
+[[needs_review_changes]]
+label = "workflow:configuration_change"
+guidance = "Changes dependencies, scripts, CI, build or test configuration, agent instructions, or review policy. Verify the affected consumers and preserve mandatory checks."
+
+[[not_allowed_changes]]
+label = "workflow:validation_bypass"
+guidance = "Disables required checks or hides failures to claim readiness, bypasses hooks or protections, or uses policy edits to approve the same PR."

@@ -1,0 +1,29 @@
+{
+  "schema_version": 2,
+  "automerge": {
+    "enabled": false,
+    "requested_mode": "review_only",
+    "require_pr_loop_coverage": true,
+    "treat_draft_as_ready_to_review": false,
+    "review_policy_path": ".demeter/review/policy.toml",
+    "scan": {
+      "open_pr_limit": 10,
+      "labels": ["agent-managed"]
+    },
+    "policy_additions": {
+      "sensitive_paths": [
+        "SETUP.md",
+        "package.json",
+        "pnpm-lock.yaml",
+        "pnpm-workspace.yaml",
+        "apps/*/package.json",
+        "apps/control-plane/migrations/**",
+        "apps/control-plane/src/db/**",
+        "apps/control-plane/src/config.ts",
+        "apps/control-plane/src/github/**"
+      ],
+      "test_paths": ["apps/control-plane/test/**"],
+      "stack_strategy": "graphite"
+    }
+  }
+}

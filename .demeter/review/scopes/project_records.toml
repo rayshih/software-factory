@@ -1,0 +1,26 @@
+scope = "project_records"
+display_name = "Plans, benchmarks, and metrics"
+traits = ["factory_safety"]
+
+[paths]
+includes = ["PLAN.md", "benchmarks/**", "metrics/**"]
+excludes = []
+
+[ownership]
+includes = ["Product intent, roadmap, benchmark definitions, spend, and pilot records."]
+excludes = ["Implementation, public landing pages, and repository automation settings."]
+
+[classification]
+guidance = "Treat the roadmap as existing intent, not an executable task queue. Require evidence for recorded results and human judgment for scope, success criteria, budget, and pilot commitments."
+
+[[allowed_changes]]
+label = "records:evidence_preserving_cleanup"
+guidance = "Corrects formatting, links, or wording while preserving facts, acceptance criteria, priorities, and commitments."
+
+[[needs_review_changes]]
+label = "records:plan_or_measurement_change"
+guidance = "Updates goals, schedule, priorities, budget, benchmark criteria, costs, results, or pilot records. Confirm source evidence and explicit approval for new commitments or execution scope."
+
+[[not_allowed_changes]]
+label = "records:unapproved_execution"
+guidance = "Treats a high-level roadmap or review configuration as permission to dispatch product tasks, spend budget, or implement unspecified execution slices."

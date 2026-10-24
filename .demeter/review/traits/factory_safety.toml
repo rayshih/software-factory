@@ -1,0 +1,17 @@
+allowed_changes = []
+
+[[needs_review_changes]]
+label = "factory:authority_or_activation"
+guidance = "Changes permissions, repository allowlists, webhook or task activation, review readiness, or human approval controls. Requires explicit human judgment and separate authorization for activation."
+
+[[not_allowed_changes]]
+label = "factory:automatic_merge"
+guidance = "Adds or enables automatic merging, merge-when-ready, automated merge queues, or agent-executed merges. Every merge must be human-approved and human-performed."
+
+[[not_allowed_changes]]
+label = "factory:unauthorized_access"
+guidance = "Executes work on an unauthorized repository, bypasses authorization or branch protections, or exposes credentials, private keys, or webhook secrets."
+
+[[not_allowed_changes]]
+label = "factory:unsupported_evidence"
+guidance = "Fabricates passing checks, benchmark results, costs, customer commitments, or completion claims, or removes failure evidence to misrepresent results."

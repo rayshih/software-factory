@@ -1,0 +1,26 @@
+scope = "control_plane"
+display_name = "Control plane"
+traits = ["factory_safety"]
+
+[paths]
+includes = ["apps/control-plane/src/**", "apps/control-plane/migrations/**", "apps/control-plane/test/**", "apps/control-plane/scripts/**"]
+excludes = []
+
+[ownership]
+includes = ["Control-plane behavior, persistence, task state, runtime integrations, and their tests."]
+excludes = ["Workspace tooling and package manifests."]
+
+[classification]
+guidance = "Review behavior and failure paths, not just compilation. Test files also retain the inherited test scope. Scrutinize idempotency, duplicate-PR prevention, authorization, and auditability."
+
+[[allowed_changes]]
+label = "control_plane:behavior_preserving"
+guidance = "Focused refactoring, comments, or regression coverage that preserves behavior, authorization boundaries, and validation strength."
+
+[[needs_review_changes]]
+label = "control_plane:behavior_or_data"
+guidance = "Changes task transitions, external calls, timeouts, retries, concurrency, schemas, migrations, or cost accounting. Review compatibility, failure recovery, and meaningful validation."
+
+[[not_allowed_changes]]
+label = "control_plane:broken_safety_invariant"
+guidance = "Allows duplicate tasks or PRs on retry, marks an idle session as completed without evidence, weakens signature or allowlist checks, or drops required audit and failure records."
