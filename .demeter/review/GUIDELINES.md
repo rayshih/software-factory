@@ -11,13 +11,20 @@ changes, and performs every merge after required checks pass. New changes
 require renewed human review. Automatic merging is prohibited, including
 merge-when-ready, automated merge queues, and merge API calls by agents.
 
-Automated review and nursing are disabled. The stored
-`review_only` request is a future capability preference, not activation or
-write authority. Draft readiness remains disabled. PR scanning has no label
-filter and retains a limit of 10 open PRs per scan. Selection grants no
-permission. Changes to these settings, policy files, repository permissions,
-or external integrations require explicit human review and separate
-authorization for activation.
+Repository review and nursing are enabled in `review_only` mode for all open
+PRs regardless of labels, with a limit of 10 open PRs per scan. Merging this
+configuration opts open PRs into review and nursing when the runner refreshes,
+subject to the external authority and policy checks. It
+grants no live-merge or project-management authority. PR-loop coverage remains
+required and draft readiness remains disabled.
+
+Per-PR configuration and review policy are read from the PR's recorded base
+commit, not its proposed head. That base must contain the enabled configuration
+and required policy files. Refresh the recorded base after changes to its
+target branch; stacked PRs whose base branches lack these files or retain
+disabled settings need their bases updated before processing. Configuration
+changes in a PR cannot authorize that same PR. Changes to scan scope,
+permissions, or external integrations require human review.
 
 ## Classification
 
