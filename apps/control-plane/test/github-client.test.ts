@@ -165,6 +165,50 @@ describe("FakeGitHub", () => {
     expect(github.pushesCreated).toBe(2);
   });
 
+  it("does not conflate identical file changes for different issues", async () => {
+    const github = new FakeGitHub();
+    github.seedRepo(repo);
+    await github.ensureBranch({
+      installationId: 1,
+      repo,
+      branch: "factory/shared",
+      baseBranch: "main",
+    });
+    const issueSeven = await github.pushFiles({
+      installationId: 1,
+      repo,
+      branch: "factory/shared",
+      issueNumber: 7,
+      files,
+    });
+    await github.pushFiles({
+      installationId: 1,
+      repo,
+      branch: "factory/shared",
+      issueNumber: 7,
+      files: [{ path: "src/fix.ts", content: "export const fixed = false;\n" }],
+    });
+    const issueEight = await github.pushFiles({
+      installationId: 1,
+      repo,
+      branch: "factory/shared",
+      issueNumber: 8,
+      files,
+    });
+    const issueSevenRetry = await github.pushFiles({
+      installationId: 1,
+      repo,
+      branch: "factory/shared",
+      issueNumber: 7,
+      files,
+    });
+
+    expect(issueSeven.created).toBe(true);
+    expect(issueEight.created).toBe(true);
+    expect(issueSevenRetry).toEqual({ sha: issueEight.sha, created: false });
+    expect(github.pushesCreated).toBe(3);
+  });
+
   it("posts one issue comment per marker when the body omits the marker", async () => {
     const github = new FakeGitHub();
     github.seedRepo(repo);

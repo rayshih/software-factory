@@ -1,4 +1,4 @@
-import { contentHash, type FileChange } from "./content-hash.js";
+import { operationHash, type FileChange } from "./content-hash.js";
 import type {
   BranchComparison,
   GitHubClient,
@@ -147,7 +147,7 @@ export class FakeGitHub implements GitHubClient {
     const repo = this.repo(input.repo);
     const branch = repo.branches.get(input.branch);
     if (!branch) throw new Error(`branch ${input.branch} does not exist`);
-    const hash = contentHash(input.files);
+    const hash = operationHash(input.issueNumber, input.files);
     if (branch.contentHashes.has(hash)) {
       return { sha: branch.sha, created: false };
     }
