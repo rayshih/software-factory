@@ -1,0 +1,1 @@
+task_id,issue,repo,status,start,end,duration,retries,tokens,cost_usd,ci_result,review_outcome,human_intervention_minutes,failure_category
