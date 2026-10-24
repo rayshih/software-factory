@@ -1,12 +1,25 @@
-# I'm building an AI software factory in 30 days — in public
+# I'm rebuilding an AI software factory in 30 days — a speed run, in public
 
 *Day 1 of 30 · 27 Oct 2026 · Ray Shih*
 
 ## What I'm trying
 
-For the next 30 days (26 October to 24 November), I'm building a system I'm calling the Software Factory. The idea is simple to say and harder to do well: take an issue from a GitHub backlog, have an AI agent work on it in a controlled environment, and end up with a pull request that has passed CI and is waiting for a human to approve, reject or request changes.
+From 24 October to 22 November I'm running a 30-day speed run called the Software Factory. I've already built a version of this over the past few months. This experiment rebuilds it from scratch by gluing off-the-shelf tools, to see how far that gets.
 
-I'm a solo founder, I have a budget of US$300, and I'm going to publish what happens — including the parts that don't work. On 24 November I'll publish a final report with one of three decisions: Go, Pivot or Stop.
+The idea is simple to say and harder to do well: take an issue from a GitHub backlog, have an AI agent work on it in a controlled environment, and end up with a pull request that has passed CI and is waiting for a human to approve, reject or request changes.
+
+I'm a solo founder, I have a budget of US$300, and I'm going to publish what happens — including the parts that don't work. Weekly updates cover progress, cost, and where it broke. On 22 November I'll publish a final report with one of three decisions: Go, Pivot or Stop.
+
+You make the wish and sign off on the result. AI does the rest. A human approves every merge. No auto-merge.
+
+## Four pillars
+
+1. **Coding** (in progress). You describe the problem, AI writes the code. This is what the 30 days is rebuilding. It does not work yet.
+2. **PR Nursing** (planned). AI looks after the PR until it's ready: review feedback and tests.
+3. **AI Review** (planned). It takes some of the code review load off you — an eval system to align agent review with human standards.
+4. **Self-improve** (planned). It should get to know you better the more you use it.
+
+Pillars beyond Coding are not built.
 
 ## Why
 
@@ -72,31 +85,31 @@ This week has one goal: a single working pull request, end to end, from a GitHub
 
 If you're a startup CTO or engineering lead and your maintenance backlog keeps growing — the bug fixes, test gaps, dependency bumps and small changes nobody gets to — I'd like to talk. I'm looking for a few pilot partners willing to try this on real, low-risk issues and tell me honestly whether it's useful.
 
-You can [apply for the pilot here](https://docs.google.com/forms/d/e/1FAIpQLSfZh7CwGon-JaBn3jCNt1xi-JmAb0YNw9LavTTHIvuqcaiMLQ/viewform), or just reply and tell me what's in your backlog. I'll be posting progress every few days.
+You can [apply for the pilot here](https://docs.google.com/forms/d/e/1FAIpQLSfZh7CwGon-JaBn3jCNt1xi-JmAb0YNw9LavTTHIvuqcaiMLQ/viewform), or just reply and tell me what's in your backlog. I'll post each week on progress, cost, and where it broke.
 
 ---
 
 ## LinkedIn version (~150 words)
 
-For the next 30 days I'm building something in public: a Software Factory that turns GitHub issues into verified, review-ready pull requests.
+For the next 30 days (24 Oct – 22 Nov) I'm doing a speed run in public: rebuilding a Software Factory from scratch by gluing off-the-shelf tools. I've already built a version over the past few months. This is how far that rebuild gets.
 
-Coding agents can already write code. What's missing for teams is everything around them: a queue, execution control, failure recovery, CI verification, human review, an audit trail and cost visibility.
+You make the wish and sign off on the result. AI does the rest. A human approves every merge. No auto-merge.
 
-The stack: GitHub App → control plane (Postgres) → Trigger.dev → Anthropic Managed Agents → PR → GitHub Actions → human review. I'm building the control layer, not another agent.
+Four pillars: Coding — you describe the problem, AI writes the code (in progress, not working yet). Planned, not built: PR Nursing, AI Review, Self-improve.
 
-Rules: retries never create duplicate PRs, every PR is human-reviewed, failed runs count towards cost, no invented numbers.
+Stack: GitHub App → control plane (Postgres) → Trigger.dev → Anthropic Managed Agents → PR → GitHub Actions → human review.
 
-I'll measure time to first PR, review-ready rate across 12 benchmark tasks, and cost per accepted PR. Budget: $300. On 24 Nov: Go, Pivot or Stop.
+Rules: retries never create duplicate PRs, every PR is human-reviewed, failed runs count towards cost. Weekly updates on progress, cost, and where it broke. Budget: $300. On 22 Nov: Go, Pivot or Stop.
 
-CTOs and eng leads with a growing maintenance backlog — I'm looking for pilot partners: [link]
+CTOs and eng leads with a maintenance backlog — I'm looking for pilot partners: [link]
 
 ---
 
 ## X thread
 
-**1/** Starting today: a 30-day build-in-public experiment. I'm building a "Software Factory" — GitHub issue in, verified, review-ready pull request out. Solo, $300 budget, results published either way. 🧵
+**1/** Starting a 30-day speed run, in public (24 Oct – 22 Nov). I've already built a version of this. This time I'm rebuilding the Software Factory from scratch, gluing off-the-shelf tools, to see how far it gets. GitHub issue in, review-ready pull request out. Solo, $300. Weekly updates, including where it breaks. 🧵
 
-**2/** Thesis: agents can already write code. The bottleneck is everything around them — queueing, concurrency, retries, CI verification, human review, audit trail, cost. That's the layer I'm building.
+**2/** You make the wish and sign off on the result. AI does the rest. A human approves every merge. No auto-merge. Pillars: Coding (in progress — you describe the problem, AI writes the code). Planned, not built: PR Nursing, AI Review, Self-improve. Day 1: nothing works yet.
 
 **3/** Stack: GitHub App → control plane (Postgres) → Trigger.dev (queue/retry) → Anthropic Managed Agents (sandbox) → branch + PR → GitHub Actions → human review. Not building my own agent or scheduler.
 
@@ -104,6 +117,6 @@ CTOs and eng leads with a growing maintenance backlog — I'm looking for pilot 
 
 **5/** Metrics, fixed in advance: first E2E PR in ≤7 days, 12 benchmark tasks, review-ready rate (target 60%, exploratory), cost per accepted PR — failed runs included.
 
-**6/** Week 1 goal: one working PR, end to end. 24 Nov: final report and a Go / Pivot / Stop call.
+**6/** Week 1 goal: one working PR, end to end. 22 Nov: final report and a Go / Pivot / Stop call.
 
 **7/** CTOs / eng leads with a growing maintenance backlog: I'm looking for a few pilot partners. [link]

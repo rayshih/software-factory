@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Software Factory — 把工程待辦變成可以 review 的 PR</title>
-  <meta name="description" content="把工程待辦變成經過驗證、可以 review 的 pull request——執行受控、過程看得到、每次都由人核准。30 天公開建造實驗。第一天：目前什麼都不能用。">
+  <meta name="description" content="把工程待辦變成經過驗證、可以 review 的 pull request——執行受控、過程看得到、每次都由人核准。30 天 speed run，從零重做。第一天：目前什麼都不能用。每一次 merge 都由人核准。">
   <meta name="color-scheme" content="light dark">
   <link rel="canonical" href="https://rayshih.github.io/software-factory/zh-tw/">
   <link rel="alternate" hreflang="en" href="https://rayshih.github.io/software-factory/">
@@ -362,6 +362,39 @@
       overflow-wrap: anywhere;
     }
 
+    .lede + .lede { margin-top: 0.85rem; }
+
+    .pillars {
+      list-style: none;
+      margin: 1.25rem 0 0;
+      padding: 0;
+      display: grid;
+      gap: 0.75rem;
+    }
+
+    .pillars li {
+      border: 1px solid var(--line);
+      background: var(--paper);
+      padding: 0.9rem 0.95rem 1rem;
+    }
+
+    .pillars h3 {
+      margin: 0.45rem 0 0.35rem;
+      font-family: var(--sans);
+      font-size: 1.05rem;
+      font-weight: 640;
+      letter-spacing: 0;
+      line-height: 1.4;
+    }
+
+    .pillars p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 0.95rem;
+    }
+
+    .pillars .tag { margin-left: 0; }
+
     footer {
       border-top: 1px solid var(--line);
       padding: 1.4rem 0 2.4rem;
@@ -371,7 +404,11 @@
 
     footer p { margin: 0; }
 
+    footer .follow { margin: 0 0 0.7rem; }
+
     @media (min-width: 860px) {
+      .pillars { grid-template-columns: repeat(4, 1fr); gap: 1rem; }
+
       .pipeline {
         grid-template-columns: repeat(4, 1fr);
         gap: 1rem 1.35rem;
@@ -439,11 +476,12 @@
     <section class="hero">
       <div class="wrap">
         <p class="eyebrow">
-          <span>公開建造</span>
-          <span>2026/10/26 – 11/24</span>
+          <span>Speed run</span>
+          <span>2026/10/24 – 11/22</span>
           <span>Ray Shih</span>
         </p>
         <h1>把工程待辦變成經過驗證、可以 review 的 pull request——執行受控、過程看得到、每次都由人核准。</h1>
+        <p class="lede">這是一場 30 天的 speed run。過去幾個月 Ray 已經做過一版。這次實驗用現成工具黏起來，從零重做，看 30 天能走多遠。每週公開進度、成本和哪裡壞掉。</p>
         <p class="lede">AI agent 已經寫得出程式碼。團隊缺的是包在外面的那座工廠：佇列、執行控制、失敗後怎麼復原、CI 驗證、人工 review、稽核軌跡，以及成本看得到。Software Factory 是這一層控制。它接現成的基礎設施，而不是再做一個 agent。</p>
         <p class="status-line">第一天——目前什麼都不能用；正在公開建造。</p>
         <div class="cta-row">
@@ -453,9 +491,39 @@
       </div>
     </section>
 
+    <section class="block" id="pillars" aria-labelledby="pillars-title">
+      <div class="wrap">
+        <p class="kicker">01 — 四個支柱</p>
+        <h2 id="pillars-title">你負責許願跟驗收，其他交給 AI。</h2>
+        <p class="prose">每一次 merge 都由人核准。沒有自動 merge。Coding 正在做。另外三項是計畫。目前都還不能用。</p>
+        <ol class="pillars">
+          <li>
+            <span class="tag">進行中</span>
+            <h3>Coding</h3>
+            <p>你描述問題，AI 寫 code。</p>
+          </li>
+          <li>
+            <span class="tag">計畫中</span>
+            <h3>PR Nursing</h3>
+            <p>AI 把 PR 顧到好，feedback 跟測試都會處理完。</p>
+          </li>
+          <li>
+            <span class="tag">計畫中</span>
+            <h3>AI Review</h3>
+            <p>幫你分擔 code review。用一套 eval，把 agent 的 review 對齊人的標準。</p>
+          </li>
+          <li>
+            <span class="tag">計畫中</span>
+            <h3>Self-improve</h3>
+            <p>越用越懂你。</p>
+          </li>
+        </ol>
+      </div>
+    </section>
+
     <section class="block" id="how" aria-labelledby="how-title">
       <div class="wrap">
-        <p class="kicker">01 — 怎麼運作</p>
+        <p class="kicker">02 — 怎麼運作</p>
         <h2 id="how-title">GitHub Issue 進來，可以 review 的 PR 出去。</h2>
         <p class="prose">有標籤的 GitHub Issue，會從 GitHub App 進來。控制層先把它存下來。Trigger.dev 負責排隊，限制同時跑幾件，也處理重試。Anthropic Managed Agent 在 sandbox 裡工作。跑完會開 branch 和 PR，GitHub Actions 跑 CI，然後由人 review。</p>
         <p class="flow">GitHub Issue → GitHub App / webhook → 控制層（Postgres）→ Trigger.dev 佇列 → Anthropic Managed Agents sandbox → branch + PR → GitHub Actions CI → 人工 review</p>
@@ -524,7 +592,7 @@
 
     <section class="block" id="pilot" aria-labelledby="pilot-title">
       <div class="wrap">
-        <p class="kicker">02 — Pilot</p>
+        <p class="kicker">03 — Pilot</p>
         <h2 id="pilot-title">用真實、低風險的工作，做一次短的試行。</h2>
         <p class="prose">給大約 5 到 30 人的軟體新創 CTO 和工程主管。你們已經在用 GitHub 和 AI 寫程式的工具，維護待辦卻一直變長：修 bug、補測試、升依賴、小改動。</p>
         <p class="prose">我在找幾位一起試的夥伴。Pilot 刻意做小。你沒有明確授權的專案，系統不會跑。</p>
@@ -549,7 +617,7 @@
 
     <section class="block" id="principles" aria-labelledby="principles-title">
       <div class="wrap">
-        <p class="kicker">03 — 原則</p>
+        <p class="kicker">04 — 原則</p>
         <h2 id="principles-title">會守住的事，以及這次不會做的事。</h2>
         <div class="split">
           <div>
@@ -585,9 +653,9 @@
 
     <section class="block" id="status" aria-labelledby="status-title">
       <div class="wrap">
-        <p class="kicker">04 — 公開建造</p>
+        <p class="kicker">05 — 公開建造</p>
         <h2 id="status-title">第一天——目前什麼都不能用；正在公開建造。</h2>
-        <p class="prose">現在沒有能運作的 pipeline。這一頁講的是實驗，不是一個打開就能用的產品。Ray Shih 一個人做，從 2026 年 10 月 26 日到 11 月 24 日。進度會照實公開，失敗也一樣。11 月 24 日實驗結束，結論是 Go、Pivot，或 Stop。</p>
+        <p class="prose">現在沒有能運作的 pipeline。這一頁講的是實驗，不是一個打開就能用的產品。Ray Shih 一個人從零重做，從 2026 年 10 月 24 日到 11 月 22 日。每週公開進度、成本和哪裡壞掉。11 月 22 日實驗結束，結論是 Go、Pivot，或 Stop。</p>
         <p class="prose"><a class="repo" href="https://github.com/rayshih/software-factory">https://github.com/rayshih/software-factory</a></p>
       </div>
     </section>
@@ -595,6 +663,7 @@
 
   <footer>
     <div class="wrap">
+      <p class="follow">跟著看 <a href="https://www.threads.com/@rayshihtw">Threads (@rayshihtw)</a> · <a href="https://x.com/existential_ray">X (@existential_ray)</a></p>
       <p>© 2026 Ray Shih</p>
     </div>
   </footer>

@@ -2,10 +2,22 @@
 
 > Turn your engineering backlog into verified, review-ready pull requests — with controlled execution, visibility, and human approval.
 
-A 30-day Build in Public experiment (26 Oct – 24 Nov 2026) by Ray Shih, solo founder.
+A 30-day speed run (24 Oct – 22 Nov 2026) by Ray Shih, solo founder. A version of this already exists from the past few months. This experiment rebuilds it from scratch by gluing off-the-shelf tools, to see how far it gets. Weekly updates on progress, cost, and where it broke.
+
+You make the wish and sign off on the result. AI does the rest. A human approves every merge. No auto-merge.
+
+Follow along: [X (@existential_ray)](https://x.com/existential_ray) · [Threads (@rayshihtw)](https://www.threads.com/@rayshihtw)
 
 Landing page: https://rayshih.github.io/software-factory/
 中文：https://rayshih.github.io/software-factory/zh-tw/
+
+## Four pillars
+- **Coding** (in progress). You describe the problem, AI writes the code.
+- **PR Nursing** (planned). AI looks after the PR until it's ready: review feedback and tests.
+- **AI Review** (planned). Takes some of the code review load off you — an eval system to align agent review with human standards.
+- **Self-improve** (planned). It should get to know you better the more you use it.
+
+On day 1, nothing works yet. Pillars beyond Coding are not built.
 
 ## Thesis
 Coding agents can already write code. What teams lack is the *factory* around them: a queue, execution control, failure recovery, CI verification, human review, an audit trail and cost visibility. Software Factory is that control layer — built by integrating existing infrastructure, not by building another agent.
