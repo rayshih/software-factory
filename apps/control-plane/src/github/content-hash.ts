@@ -8,7 +8,9 @@ export interface FileChange {
 export const CONTENT_HASH_TRAILER = "Factory-Content-Hash:";
 
 export function contentHash(files: readonly FileChange[]): string {
-  return createHash("sha256").update(JSON.stringify(canonicalFiles(files))).digest("hex");
+  return createHash("sha256")
+    .update(JSON.stringify(canonicalFiles(files)))
+    .digest("hex");
 }
 
 export function operationHash(
