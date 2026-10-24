@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Software Factory — review-ready pull requests from your backlog</title>
-  <meta name="description" content="Turn your engineering backlog into verified, review-ready pull requests — with controlled execution, visibility, and human approval. A 30-day build-in-public experiment. Day 1: nothing works yet.">
+  <meta name="description" content="Turn your engineering backlog into verified, review-ready pull requests — with controlled execution, visibility, and human approval. A 30-day speed run, rebuilding from scratch. Day 1: nothing works yet. A human approves every merge.">
   <meta name="color-scheme" content="light dark">
   <link rel="canonical" href="https://rayshih.github.io/software-factory/">
   <link rel="alternate" hreflang="en" href="https://rayshih.github.io/software-factory/">
@@ -367,6 +367,38 @@
       overflow-wrap: anywhere;
     }
 
+    .lede + .lede { margin-top: 0.85rem; }
+
+    .pillars {
+      list-style: none;
+      margin: 1.25rem 0 0;
+      padding: 0;
+      display: grid;
+      gap: 0.75rem;
+    }
+
+    .pillars li {
+      border: 1px solid var(--line);
+      background: var(--paper);
+      padding: 0.9rem 0.95rem 1rem;
+    }
+
+    .pillars h3 {
+      margin: 0.45rem 0 0.35rem;
+      font-family: var(--sans);
+      font-size: 1.05rem;
+      font-weight: 640;
+      letter-spacing: -0.015em;
+    }
+
+    .pillars p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 0.95rem;
+    }
+
+    .pillars .tag { margin-left: 0; }
+
     footer {
       border-top: 1px solid var(--line);
       padding: 1.4rem 0 2.4rem;
@@ -376,7 +408,11 @@
 
     footer p { margin: 0; }
 
+    footer .follow { margin: 0 0 0.7rem; }
+
     @media (min-width: 860px) {
+      .pillars { grid-template-columns: repeat(4, 1fr); gap: 1rem; }
+
       .pipeline {
         grid-template-columns: repeat(4, 1fr);
         gap: 1rem 1.35rem;
@@ -444,11 +480,12 @@
     <section class="hero">
       <div class="wrap">
         <p class="eyebrow">
-          <span>Build in public</span>
-          <span>26 Oct – 24 Nov 2026</span>
+          <span>Speed run</span>
+          <span>24 Oct – 22 Nov 2026</span>
           <span>Ray Shih</span>
         </p>
         <h1>Turn your engineering backlog into verified, review-ready pull requests — with controlled execution, visibility, and human approval.</h1>
+        <p class="lede">This is a 30-day speed run. Ray has already built a version of this over the past few months. This experiment rebuilds it from scratch by gluing off-the-shelf tools, to see how far it gets. Weekly updates on progress, cost, and where it broke.</p>
         <p class="lede">Coding agents can already write code. What teams lack is the factory around them: a queue, execution control, failure recovery, CI verification, human review, an audit trail and cost visibility. Software Factory is that control layer — built by integrating existing infrastructure, not by building another agent.</p>
         <p class="status-line">Day 1 — nothing works yet; building in public.</p>
         <div class="cta-row">
@@ -458,9 +495,39 @@
       </div>
     </section>
 
+    <section class="block" id="pillars" aria-labelledby="pillars-title">
+      <div class="wrap">
+        <p class="kicker">01 — Four pillars</p>
+        <h2 id="pillars-title">You make the wish and sign off on the result. AI does the rest.</h2>
+        <p class="prose">A human approves every merge. No auto-merge. Coding is in progress. The other three are planned. None of them work yet.</p>
+        <ol class="pillars">
+          <li>
+            <span class="tag">In progress</span>
+            <h3>Coding</h3>
+            <p>You describe the problem, AI writes the code.</p>
+          </li>
+          <li>
+            <span class="tag">Planned</span>
+            <h3>PR Nursing</h3>
+            <p>AI looks after the PR until it's ready: review feedback and tests.</p>
+          </li>
+          <li>
+            <span class="tag">Planned</span>
+            <h3>AI Review</h3>
+            <p>Takes some of the code review load off you. An eval system to align agent review with human standards.</p>
+          </li>
+          <li>
+            <span class="tag">Planned</span>
+            <h3>Self-improve</h3>
+            <p>It should get to know you better the more you use it.</p>
+          </li>
+        </ol>
+      </div>
+    </section>
+
     <section class="block" id="how" aria-labelledby="how-title">
       <div class="wrap">
-        <p class="kicker">01 — How it works</p>
+        <p class="kicker">02 — How it works</p>
         <h2 id="how-title">Issue in. Review-ready pull request out.</h2>
         <p class="prose">A labelled GitHub issue enters through a GitHub App. The control plane stores it. Trigger.dev queues it, with concurrency limits and retries. An Anthropic Managed Agent works in a sandbox. The run opens a branch and a pull request, GitHub Actions runs CI, and a person reviews the result.</p>
         <p class="flow">GitHub Issue → GitHub App / webhook → control plane (Postgres) → Trigger.dev queue → Anthropic Managed Agents sandbox → branch + PR → GitHub Actions CI → human review</p>
@@ -529,7 +596,7 @@
 
     <section class="block" id="pilot" aria-labelledby="pilot-title">
       <div class="wrap">
-        <p class="kicker">02 — The pilot</p>
+        <p class="kicker">03 — The pilot</p>
         <h2 id="pilot-title">A short trial on real, low-risk work.</h2>
         <p class="prose">For CTOs and engineering leads at software startups of about 5–30 people who already use GitHub and AI coding tools, and whose maintenance backlog keeps growing: bug fixes, test gaps, dependency bumps, small changes.</p>
         <p class="prose">I'm looking for a few design partners. The pilot is deliberately small. The system never runs on a repository that hasn't been explicitly authorised.</p>
@@ -554,7 +621,7 @@
 
     <section class="block" id="principles" aria-labelledby="principles-title">
       <div class="wrap">
-        <p class="kicker">03 — Principles</p>
+        <p class="kicker">04 — Principles</p>
         <h2 id="principles-title">What it will respect, and what it will not do.</h2>
         <div class="split">
           <div>
@@ -590,9 +657,9 @@
 
     <section class="block" id="status" aria-labelledby="status-title">
       <div class="wrap">
-        <p class="kicker">04 — Build in public</p>
+        <p class="kicker">05 — Build in public</p>
         <h2 id="status-title">Day 1 — nothing works yet; building in public.</h2>
-        <p class="prose">There is no working pipeline. This page describes the experiment, not a product you can switch on. Ray Shih is building it alone, from 26 October to 24 November 2026. Progress will be published as it happens, including failures. On 24 November the experiment ends with a Go, Pivot or Stop decision.</p>
+        <p class="prose">There is no working pipeline. This page describes the experiment, not a product you can switch on. Ray Shih is rebuilding it alone, from 24 October to 22 November 2026. Weekly updates cover progress, cost, and where it broke. On 22 November the experiment ends with a Go, Pivot or Stop decision.</p>
         <p class="prose"><a class="repo" href="https://github.com/rayshih/software-factory">https://github.com/rayshih/software-factory</a></p>
       </div>
     </section>
@@ -600,6 +667,7 @@
 
   <footer>
     <div class="wrap">
+      <p class="follow">Follow along <a href="https://x.com/existential_ray">X (@existential_ray)</a> · <a href="https://www.threads.com/@rayshihtw">Threads (@rayshihtw)</a></p>
       <p>© 2026 Ray Shih</p>
     </div>
   </footer>

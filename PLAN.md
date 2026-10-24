@@ -1,4 +1,16 @@
-# Software Factory — 30-Day Plan (26 Oct – 24 Nov 2026)
+# Software Factory — 30-Day Speed Run (24 Oct – 22 Nov 2026)
+
+A version of this already exists from the past few months. This experiment rebuilds it from scratch by gluing off-the-shelf tools, to see how far it gets in 30 days. Weekly updates on progress, cost, and where it broke.
+
+You make the wish and sign off on the result. AI does the rest. A human approves every merge. No auto-merge.
+
+## Four pillars
+1. **Coding** (in progress). You describe the problem, AI writes the code. This is what the 30 days is rebuilding. It does not work yet.
+2. **PR Nursing** (planned). AI looks after the PR until it's ready: review feedback and tests.
+3. **AI Review** (planned). Takes some of the code review load off you — an eval system to align agent review with human standards.
+4. **Self-improve** (planned). It should get to know you better the more you use it.
+
+Pillars beyond Coding are not built.
 
 ## Thesis
 Agent code generation is commoditising; the bottleneck is controlled, verifiable, reviewable execution. A thin control plane over existing infra can turn backlog issues into review-ready PRs at a cost and reliability teams would pay for.
@@ -35,11 +47,11 @@ SaaS onboarding · billing · RBAC/SSO · multi-tenant · own agent harness · o
 ## Roadmap
 | Week | Dates | Goal |
 |---|---|---|
-| W1 | 26 Oct – 1 Nov | First working end-to-end PR |
-| W2 | 2 – 8 Nov | Reliability & orchestration (concurrency, retries, failure handling) |
-| W3 | 9 – 15 Nov | Trust & human oversight (review flow, audit log, cost tracking) |
-| W4 | 16 – 22 Nov | Benchmark runs & market validation |
-| Final | 24 Nov | Public report with Go / Pivot / Stop decision |
+| W1 | 24–30 Oct | First working end-to-end PR |
+| W2 | 31 Oct – 6 Nov | Reliability & orchestration (concurrency, retries, failure handling) |
+| W3 | 7–13 Nov | Trust & human oversight (review flow, audit log, cost tracking) |
+| W4 | 14–20 Nov | Benchmark runs & market validation |
+| Final | 22 Nov | Public report with Go / Pivot / Stop decision |
 
 ## KPIs
 - **First E2E PR** in ≤7 days.
@@ -48,13 +60,13 @@ SaaS onboarding · billing · RBAC/SSO · multi-tenant · own agent harness · o
 - **Cost per accepted PR** = total model + runtime + CI cost (including failed tasks) ÷ human-accepted PRs.
 
 ## Decision gates
-- **End W1:** no E2E PR → cut scope to the minimal path before adding reliability features.
-- **End W2:** retries/concurrency not working without duplicate PRs → fix before any benchmark runs.
-- **End W4 / 24 Nov:**
+- **Day 7 (30 Oct):** no E2E PR → cut scope to the minimal path before adding reliability features.
+- **Day 14 (6 Nov):** retries/concurrency not working without duplicate PRs → fix before any benchmark runs.
+- **Day 21 (13 Nov):** exact thresholds for pilot interest are fixed and published, before benchmark runs.
+- **Day 30 (22 Nov):**
   - **Go:** review-ready rate near/above target, credible cost per accepted PR, and real pilot interest from ICP.
   - **Pivot:** pipeline works but quality or demand is weak → change task type, ICP or positioning.
   - **Stop:** pipeline unreliable and no meaningful demand signal.
-  (Exact thresholds for interest to be fixed before W4 starts, and published.)
 
 ## Budget
 US$300 total across model, runtime, CI and tooling. Spend tracked in metrics/tracker.csv; failed tasks count.
