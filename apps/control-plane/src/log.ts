@@ -3,26 +3,69 @@ export interface Logger {
   error(message: string, fields?: Record<string, unknown>): void;
 }
 
-const REDACTED_KEYS = new Set([
+const REDACTED = "[redacted]";
+
+/**
+ * Compared after lowercasing and stripping underscores.
+ * `token` matches `token` and keys that end in `token` (`accessToken`), not `tokens`.
+ */
+const SENSITIVE_STEMS = [
   "authorization",
-  "token",
   "privatekey",
-  "private_key",
-  "secret",
   "apikey",
-  "api_key",
   "installationtoken",
-]);
+  "secret",
+  "token",
+] as const;
+
+function normalizedKey(key: string): string {
+  return key.toLowerCase().replace(/_/g, "");
+}
+
+function isSensitiveKey(key: string): boolean {
+  const normalized = normalizedKey(key);
+  if (normalized === "tokens") return false;
+  return SENSITIVE_STEMS.some((stem) => {
+    if (stem === "token") return normalized === "token" || normalized.endsWith("token");
+    return normalized.includes(stem);
+  });
+}
+
+function isPlainObject(value: object): value is Record<string, unknown> {
+  const proto = Object.getPrototypeOf(value);
+  return proto === Object.prototype || proto === null;
+}
+
+function sanitizeValue(value: unknown, seen: WeakSet<object>): unknown {
+  if (Array.isArray(value)) {
+    if (seen.has(value)) return REDACTED;
+    seen.add(value);
+    return value.map((item) => sanitizeValue(item, seen));
+  }
+  if (typeof value === "object" && value !== null && isPlainObject(value)) {
+    if (seen.has(value)) return REDACTED;
+    seen.add(value);
+    return sanitizeObject(value, seen);
+  }
+  return value;
+}
+
+function sanitizeObject(
+  fields: Record<string, unknown>,
+  seen: WeakSet<object>,
+): Record<string, unknown> {
+  const safe: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(fields)) {
+    safe[key] = isSensitiveKey(key) ? REDACTED : sanitizeValue(value, seen);
+  }
+  return safe;
+}
 
 export function sanitizeFields(
   fields: Record<string, unknown> | undefined,
 ): Record<string, unknown> {
   if (!fields) return {};
-  const safe: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(fields)) {
-    safe[key] = REDACTED_KEYS.has(key.toLowerCase()) ? "[redacted]" : value;
-  }
-  return safe;
+  return sanitizeObject(fields, new WeakSet());
 }
 
 export const consoleLogger: Logger = {
