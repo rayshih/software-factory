@@ -18,14 +18,18 @@ describe("tracker csv", () => {
     const { deps } = await createDeps();
     const response = await postGithub(deps, "issues", "csv-delivery", labeledPayload());
     const { taskId } = (await response.json()) as { taskId: string };
-    await deps.store.updateTask(taskId, {
-      status: "failed",
-      failureCategory: 'needs, "review"',
-      costUsd: "0.000000",
-      finishedAt: new Date("2026-10-26T00:01:00.000Z"),
-      startedAt: new Date("2026-10-26T00:00:00.000Z"),
-      attempts: 2,
-    });
+    await deps.store.updateTask(
+      taskId,
+      {
+        status: "failed",
+        failureCategory: 'needs, "review"',
+        costUsd: "0.000000",
+        finishedAt: new Date("2026-10-26T00:01:00.000Z"),
+        startedAt: new Date("2026-10-26T00:00:00.000Z"),
+        attempts: 2,
+      },
+      "queued",
+    );
     const task = await deps.store.getTask(taskId);
     if (!task) throw new Error("missing task");
     const csv = tasksToCsv([task]);
