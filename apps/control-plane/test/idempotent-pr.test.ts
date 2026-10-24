@@ -21,7 +21,11 @@ describe("idempotent pull request creation", () => {
     expect(github.commentsCreated).toHaveLength(1);
     expect(github.pushesCreated).toBe(1);
 
-    await deps.store.updateTask(task.id, { status: "running", prNumber: null, prUrl: null });
+    await deps.store.updateTask(
+      task.id,
+      { status: "running", prNumber: null, prUrl: null },
+      "pr_opened",
+    );
     const second = await executeRunIssue(deps, { taskId: task.id });
     expect(second.status).toBe("pr_opened");
     expect(second.prNumber).toBe(1);
