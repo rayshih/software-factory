@@ -85,7 +85,7 @@ describe("delivery dedupe", () => {
         action: "labeled",
         repo: "rayshih/sf-demo-todo-api",
       }),
-    ).toBe("process");
+    ).toMatchObject({ outcome: "process" });
 
     const response = await postGithub(deps, "issues", "held", labeledPayload());
     expect(response.status).toBe(500);

@@ -62,6 +62,10 @@ function inProgress(): GithubWebhookResult {
   return { status: 500, body: { ok: false, error: "delivery in progress" } };
 }
 
+function lostClaim(): GithubWebhookResult {
+  return { status: 200, body: { ok: true, disposition: "lost_claim" } };
+}
+
 export async function handleGithubWebhook(
   deps: WebhookDependencies,
   input: GithubWebhookInput,
@@ -85,26 +89,39 @@ export async function handleGithubWebhook(
       action: null,
       repo: null,
     });
-    if (claim === "duplicate") return { status: 200, body: { ok: true, disposition: "duplicate" } };
-    if (claim === "in_progress") return inProgress();
-    await deps.store.finishDelivery(deliveryId, "processed", "invalid_json");
+    if (claim.outcome === "duplicate")
+      return { status: 200, body: { ok: true, disposition: "duplicate" } };
+    if (claim.outcome === "in_progress") return inProgress();
+    const finished = await deps.store.finishDelivery(
+      deliveryId,
+      "processed",
+      "invalid_json",
+      claim.generation,
+    );
+    if (!finished) return lostClaim();
     return { status: 200, body: { ok: true, disposition: "invalid_json" } };
   }
 
   const action = readAction(payload);
   const repo = readRepo(payload);
   const claim = await deps.store.claimDelivery({ deliveryId, eventName, action, repo });
-  if (claim === "duplicate") {
+  if (claim.outcome === "duplicate") {
     return { status: 200, body: { ok: true, disposition: "duplicate" } };
   }
   // A fresh claim belongs to another request. 500 asks GitHub to retry.
   // A finished winner then looks like a duplicate; a crashed winner is stale
   // and the retry can take the row.
-  if (claim === "in_progress") return inProgress();
+  if (claim.outcome === "in_progress") return inProgress();
 
   try {
     const result = await dispatch(deps, eventName, payload, repo);
-    await deps.store.finishDelivery(deliveryId, "processed", result.disposition);
+    const finished = await deps.store.finishDelivery(
+      deliveryId,
+      "processed",
+      result.disposition,
+      claim.generation,
+    );
+    if (!finished) return lostClaim();
     return { status: 200, body: { ok: true, ...result.body, disposition: result.disposition } };
   } catch (error) {
     deps.logger.error("webhook handler failed", {
@@ -112,7 +129,13 @@ export async function handleGithubWebhook(
       eventName,
       message: error instanceof Error ? error.message : "unknown error",
     });
-    await deps.store.finishDelivery(deliveryId, "failed", "error");
+    const finished = await deps.store.finishDelivery(
+      deliveryId,
+      "failed",
+      "error",
+      claim.generation,
+    );
+    if (!finished) return lostClaim();
     return { status: 500, body: { ok: false, error: "webhook handler failed" } };
   }
 }
