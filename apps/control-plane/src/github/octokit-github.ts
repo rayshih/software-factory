@@ -20,6 +20,10 @@ import { parseRepo } from "./repo.js";
 
 type InstallationAuth = ReturnType<typeof createAppAuth>;
 
+// Keep retry detection cheap even on long-lived branches. Two pages still cover the
+// A/B/A retry case while placing a hard ceiling on GitHub API requests.
+const CONTENT_HASH_HISTORY_PAGES = 2;
+
 /**
  * GitHub App client. Mints an installation token per call via @octokit/auth-app.
  * Does not merge pull requests.
@@ -288,7 +292,7 @@ export class OctokitGitHub implements GitHubClient {
     branch: string,
     hash: string,
   ): Promise<boolean> {
-    for (let page = 1; ; page += 1) {
+    for (let page = 1; page <= CONTENT_HASH_HISTORY_PAGES; page += 1) {
       const commits = await octokit.rest.repos.listCommits({
         owner,
         repo,
@@ -301,6 +305,7 @@ export class OctokitGitHub implements GitHubClient {
       }
       if (commits.data.length < 100) return false;
     }
+    return false;
   }
 }
 
