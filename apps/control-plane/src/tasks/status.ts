@@ -28,6 +28,10 @@ const ALLOWED: Record<TaskStatus, readonly TaskStatus[]> = {
   running: ["pr_opened", "failed", "needs_human"],
   pr_opened: ["ci_passed", "ci_failed", "needs_human", "queued", "accepted", "rejected", "failed"],
   ci_passed: ["needs_human", "accepted", "rejected", "queued", "failed"],
+  // ci_failed -> accepted records an observed human merge. GitHub reported
+  // pull_request.closed with merged true while CI was failing: a person merged.
+  // This service does not merge, and there is no accept API. A review approval
+  // while the task is ci_failed does not take this edge.
   ci_failed: ["needs_human", "queued", "running", "accepted", "rejected", "failed"],
   needs_human: ["accepted", "rejected", "queued", "failed"],
   accepted: [],
