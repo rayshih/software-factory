@@ -61,6 +61,9 @@ pids/
 .DS_Store
 Thumbs.db
 
+# Trigger.dev local dev
+.trigger/
+
 # Editors
 .idea/
 *.swp
