@@ -28,8 +28,7 @@ function canonicalFiles(files: readonly FileChange[]): FileChange[] {
     .map((file) => ({ path: file.path, content: file.content }))
     .sort(
       (left, right) =>
-        compareOrdinal(left.path, right.path) ||
-        compareOrdinal(left.content, right.content),
+        compareOrdinal(left.path, right.path) || compareOrdinal(left.content, right.content),
     );
 }
 
