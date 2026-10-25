@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { DuplicateFilePathError } from "../src/github/content-hash.js";
 import { FakeGitHub } from "../src/github/fake-github.js";
 import { operationMarker } from "../src/github/issue-comment.js";
 
@@ -248,6 +249,30 @@ describe("FakeGitHub", () => {
     expect(first.created).toBe(true);
     expect(repeated).toEqual({ sha: first.sha, created: false });
     expect(github.pushesCreated).toBe(2);
+  });
+
+  it("rejects a duplicate file path before writing a commit", async () => {
+    const github = new FakeGitHub();
+    github.seedRepo(repo);
+    await github.ensureBranch({
+      installationId: 1,
+      repo,
+      branch: "factory/issue-7",
+      baseBranch: "main",
+    });
+    const before = github.openPulls(repo);
+
+    await expect(
+      github.pushFiles({
+        installationId: 1,
+        repo,
+        branch: "factory/issue-7",
+        issueNumber: 7,
+        files: [files[0]!, { path: "src/fix.ts", content: "export const other = true;\n" }],
+      }),
+    ).rejects.toBeInstanceOf(DuplicateFilePathError);
+    expect(github.pushesCreated).toBe(0);
+    expect(before).toHaveLength(0);
   });
 
   it("posts one issue comment per marker when the body omits the marker", async () => {
