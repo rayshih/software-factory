@@ -317,6 +317,42 @@ describe("FakeGitHub", () => {
     expect(github.commentsCreated[0]?.body.split("\n").at(-1)).toBe(marker);
   });
 
+  it("does not reuse an exact operation marker from a human comment", async () => {
+    const github = new FakeGitHub();
+    github.seedRepo(repo);
+    const marker = operationMarker("pr-link");
+    github.seedIssueComment(repo, 7, marker);
+
+    const posted = await github.commentOnIssue({
+      installationId: 1,
+      repo,
+      issueNumber: 7,
+      marker,
+      body: "Opened pull request #12",
+    });
+
+    expect(posted.created).toBe(true);
+    expect(github.commentsCreated).toHaveLength(1);
+  });
+
+  it("reuses an app-owned comment with the exact operation marker", async () => {
+    const github = new FakeGitHub();
+    github.seedRepo(repo);
+    const marker = operationMarker("pr-link");
+    const seededId = github.seedIssueComment(repo, 7, marker, { appOwned: true });
+
+    const posted = await github.commentOnIssue({
+      installationId: 1,
+      repo,
+      issueNumber: 7,
+      marker,
+      body: "Opened pull request #12",
+    });
+
+    expect(posted).toEqual({ id: seededId, created: false });
+    expect(github.commentsCreated).toHaveLength(0);
+  });
+
   it("reports behind when only the base branch moves", async () => {
     const github = new FakeGitHub();
     github.seedRepo(repo);

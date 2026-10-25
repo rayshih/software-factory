@@ -34,6 +34,7 @@ interface CommentState {
   id: number;
   issueNumber: number;
   body: string;
+  appOwned: boolean;
 }
 
 interface RepoState {
@@ -122,10 +123,15 @@ export class FakeGitHub implements GitHubClient {
     return this.repo(fullName).pulls.filter((pull) => pull.state === "open");
   }
 
-  seedIssueComment(fullName: string, issueNumber: number, body: string): number {
+  seedIssueComment(
+    fullName: string,
+    issueNumber: number,
+    body: string,
+    options?: { appOwned?: boolean },
+  ): number {
     const repo = this.repo(fullName);
     const id = repo.nextComment++;
-    repo.comments.push({ id, issueNumber, body });
+    repo.comments.push({ id, issueNumber, body, appOwned: options?.appOwned ?? false });
     return id;
   }
 
@@ -260,6 +266,7 @@ export class FakeGitHub implements GitHubClient {
     const existing = repo.comments.find(
       (comment) =>
         comment.issueNumber === input.issueNumber &&
+        comment.appOwned &&
         commentHasExactMarker(comment.body, input.marker),
     );
     if (existing) return { id: existing.id, created: false };
@@ -267,6 +274,7 @@ export class FakeGitHub implements GitHubClient {
       id: repo.nextComment++,
       issueNumber: input.issueNumber,
       body: issueCommentBody(input.body, input.marker),
+      appOwned: true,
     };
     repo.comments.push(comment);
     this.commentsCreated.push(comment);
