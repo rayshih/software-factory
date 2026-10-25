@@ -270,4 +270,55 @@ describe("FakeGitHub", () => {
     expect(github.commentsCreated).toHaveLength(1);
     expect(github.commentsCreated[0]?.body).toContain(marker);
   });
+
+  it("reports behind when only the base branch moves", async () => {
+    const github = new FakeGitHub();
+    github.seedRepo(repo);
+    await github.ensureBranch({
+      installationId: 1,
+      repo,
+      branch: "feature",
+      baseBranch: "main",
+    });
+    await github.pushFiles({
+      installationId: 1,
+      repo,
+      branch: "main",
+      issueNumber: 1,
+      files: [{ path: "src/base.ts", content: "export const baseMoved = true;\n" }],
+    });
+
+    await expect(
+      github.compare({ installationId: 1, repo, base: "main", head: "feature" }),
+    ).resolves.toEqual({ aheadBy: 0, behindBy: 1, status: "behind" });
+  });
+
+  it("reports diverged after both branches move", async () => {
+    const github = new FakeGitHub();
+    github.seedRepo(repo);
+    await github.ensureBranch({
+      installationId: 1,
+      repo,
+      branch: "feature",
+      baseBranch: "main",
+    });
+    await github.pushFiles({
+      installationId: 1,
+      repo,
+      branch: "feature",
+      issueNumber: 1,
+      files,
+    });
+    await github.pushFiles({
+      installationId: 1,
+      repo,
+      branch: "main",
+      issueNumber: 2,
+      files: [{ path: "src/base.ts", content: "export const baseMoved = true;\n" }],
+    });
+
+    await expect(
+      github.compare({ installationId: 1, repo, base: "main", head: "feature" }),
+    ).resolves.toEqual({ aheadBy: 1, behindBy: 1, status: "diverged" });
+  });
 });

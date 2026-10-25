@@ -8,11 +8,15 @@ import type {
 } from "./client.js";
 import { issueCommentBody } from "./issue-comment.js";
 
+interface CommitState {
+  sha: string;
+  parentSha: string | null;
+  message: string;
+  contentHashes: Set<string>;
+}
+
 interface BranchState {
   sha: string;
-  message: string;
-  commits: number;
-  contentHashes: Set<string>;
 }
 
 interface PullState {
@@ -35,6 +39,7 @@ interface CommentState {
 interface RepoState {
   defaultBranch: string;
   baseSha: string;
+  commits: Map<string, CommitState>;
   branches: Map<string, BranchState>;
   pulls: PullState[];
   comments: CommentState[];
@@ -71,9 +76,10 @@ export class FakeGitHub implements GitHubClient {
     this.repos.set(fullName, {
       defaultBranch,
       baseSha,
-      branches: new Map([
-        [defaultBranch, { sha: baseSha, message: "init", commits: 0, contentHashes: new Set() }],
+      commits: new Map([
+        [baseSha, { sha: baseSha, parentSha: null, message: "init", contentHashes: new Set() }],
       ]),
+      branches: new Map([[defaultBranch, { sha: baseSha }]]),
       pulls: [],
       comments: [],
       nextPr: 1,
@@ -86,12 +92,16 @@ export class FakeGitHub implements GitHubClient {
     const repo = this.repo(fullName);
     const branch = repo.branches.get(headBranch);
     if (!branch || branch.sha === repo.baseSha) {
-      repo.branches.set(headBranch, {
-        sha: `seed-${headBranch}`,
+      const base = repo.branches.get(baseBranch);
+      const parentSha = base?.sha ?? repo.baseSha;
+      const sha = `seed-${headBranch}`;
+      repo.commits.set(sha, {
+        sha,
+        parentSha,
         message: "seeded ahead",
-        commits: 1,
         contentHashes: new Set(),
       });
+      repo.branches.set(headBranch, { sha });
     }
     const number = repo.nextPr++;
     const pull: PullState = {
@@ -127,12 +137,7 @@ export class FakeGitHub implements GitHubClient {
     if (existing) return { sha: existing.sha, created: false };
     const base = repo.branches.get(input.baseBranch);
     if (!base) throw new Error(`base branch ${input.baseBranch} does not exist`);
-    repo.branches.set(input.branch, {
-      sha: base.sha,
-      message: base.message,
-      commits: 0,
-      contentHashes: new Set(),
-    });
+    repo.branches.set(input.branch, { sha: base.sha });
     return { sha: base.sha, created: true };
   }
 
@@ -148,14 +153,17 @@ export class FakeGitHub implements GitHubClient {
     const branch = repo.branches.get(input.branch);
     if (!branch) throw new Error(`branch ${input.branch} does not exist`);
     const hash = operationHash(input.branch, input.issueNumber, input.files);
-    if (branch.contentHashes.has(hash)) {
+    if (this.historyHasHash(repo, branch.sha, hash)) {
       return { sha: branch.sha, created: false };
     }
     const sha = `commit-${repo.nextCommit++}`;
+    repo.commits.set(sha, {
+      sha,
+      parentSha: branch.sha,
+      message: `Apply changes for issue #${input.issueNumber}\n\nFactory-Content-Hash: ${hash}\n`,
+      contentHashes: new Set([hash]),
+    });
     branch.sha = sha;
-    branch.message = `Apply changes for issue #${input.issueNumber}\n\nFactory-Content-Hash: ${hash}\n`;
-    branch.commits += 1;
-    branch.contentHashes.add(hash);
     this.pushesCreated += 1;
     return { sha, created: true };
   }
@@ -170,10 +178,24 @@ export class FakeGitHub implements GitHubClient {
     const head = repo.branches.get(input.head);
     const base = repo.branches.get(input.base);
     if (!head || !base) throw new Error("branch not found");
-    if (head.sha === base.sha || head.commits === 0) {
-      return { aheadBy: 0, behindBy: 0, status: "identical" };
-    }
-    return { aheadBy: head.commits, behindBy: 0, status: "ahead" };
+    const headChain = this.ancestry(repo, head.sha);
+    const baseChain = this.ancestry(repo, base.sha);
+    const baseShas = new Set(baseChain);
+    const mergeBaseIndex = headChain.findIndex((sha) => baseShas.has(sha));
+    if (mergeBaseIndex < 0) throw new Error("no common ancestor");
+    const mergeBase = headChain[mergeBaseIndex];
+    if (!mergeBase) throw new Error("no common ancestor");
+    const aheadBy = mergeBaseIndex;
+    const behindBy = baseChain.indexOf(mergeBase);
+    const status =
+      aheadBy === 0 && behindBy === 0
+        ? "identical"
+        : aheadBy > 0 && behindBy === 0
+          ? "ahead"
+          : aheadBy === 0 && behindBy > 0
+            ? "behind"
+            : "diverged";
+    return { aheadBy, behindBy, status };
   }
 
   async openPullRequest(input: {
@@ -248,5 +270,25 @@ export class FakeGitHub implements GitHubClient {
     const repo = this.repos.get(fullName);
     if (!repo) throw new Error(`fake repo ${fullName} was not seeded`);
     return repo;
+  }
+
+  private ancestry(repo: RepoState, sha: string): string[] {
+    const chain: string[] = [];
+    const seen = new Set<string>();
+    let current: string | null = sha;
+    while (current && !seen.has(current)) {
+      const commit = repo.commits.get(current);
+      if (!commit) break;
+      seen.add(current);
+      chain.push(current);
+      current = commit.parentSha;
+    }
+    return chain;
+  }
+
+  private historyHasHash(repo: RepoState, sha: string, hash: string): boolean {
+    return this.ancestry(repo, sha).some(
+      (commitSha) => repo.commits.get(commitSha)?.contentHashes.has(hash) ?? false,
+    );
   }
 }

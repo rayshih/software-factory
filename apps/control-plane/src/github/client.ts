@@ -31,6 +31,11 @@ export interface IssueCommentResult {
  * GitHub operations the factory is allowed to perform.
  * There is no merge method. A human merges outside this process.
  * Every method is safe to call again with the same inputs.
+ *
+ * installationId and repo are supplied by the orchestrator from trusted
+ * project configuration. The coding agent does not choose the repository.
+ * That check belongs with the orchestrator integration. This client stays
+ * the operations surface and does not grow an authorization framework.
  */
 export interface GitHubClient {
   getInstallationToken(installationId: number): Promise<string>;

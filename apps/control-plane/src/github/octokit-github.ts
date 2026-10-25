@@ -1,11 +1,6 @@
 import { createAppAuth } from "@octokit/auth-app";
 import { Octokit } from "@octokit/rest";
-import {
-  commitMessage,
-  messageHasContentHash,
-  operationHash,
-  type FileChange,
-} from "./content-hash.js";
+import { commitMessage, operationHash, type FileChange } from "./content-hash.js";
 import type {
   BranchComparison,
   BranchRef,
@@ -14,21 +9,33 @@ import type {
   PullRequestRef,
   PushResult,
 } from "./client.js";
+import { COMMIT_HISTORY_PAGE_SIZE, findContentHashInHistory } from "./commit-history.js";
 import { isHttpStatus } from "./errors.js";
-import { findIssueCommentByMarker, issueCommentBody } from "./issue-comment.js";
+import {
+  issueCommentBody,
+  keepCanonicalComment,
+  listIssueCommentIdsByMarker,
+} from "./issue-comment.js";
 import { parseRepo } from "./repo.js";
 
 type InstallationAuth = ReturnType<typeof createAppAuth>;
 const issueCommentLocks = new Map<string, Promise<void>>();
+const OPEN_PULL_PAGE_SIZE = 100;
 
 /**
  * GitHub App client. Mints an installation token per call via @octokit/auth-app.
  * Does not merge pull requests.
+ *
+ * `installationClient` replaces the Octokit instance in tests.
  */
 export class OctokitGitHub implements GitHubClient {
   private readonly auth: InstallationAuth;
 
-  constructor(appId: string, privateKey: string) {
+  constructor(
+    appId: string,
+    privateKey: string,
+    private readonly installationClient?: (installationId: number) => Promise<Octokit>,
+  ) {
     this.auth = createAppAuth({ appId, privateKey });
   }
 
@@ -79,10 +86,10 @@ export class OctokitGitHub implements GitHubClient {
     const parentSha = await this.readRef(octokit, owner, repo, input.branch);
     if (!parentSha) throw new Error(`branch ${input.branch} does not exist on ${input.repo}`);
     const hash = operationHash(input.branch, input.issueNumber, input.files);
-    const parent = await octokit.rest.git.getCommit({ owner, repo, commit_sha: parentSha });
     if (await this.branchHasContentHash(octokit, owner, repo, input.branch, hash)) {
       return { sha: parentSha, created: false };
     }
+    const parent = await octokit.rest.git.getCommit({ owner, repo, commit_sha: parentSha });
     const tree = await octokit.rest.git.createTree({
       owner,
       repo,
@@ -217,7 +224,7 @@ export class OctokitGitHub implements GitHubClient {
     return this.withIssueCommentLock(lockKey, async () => {
       const octokit = await this.octokit(input.installationId);
       const { owner, repo } = parseRepo(input.repo);
-      const existingId = await findIssueCommentByMarker(input.marker, async (page) => {
+      const listPage = async (page: number) => {
         const comments = await octokit.rest.issues.listComments({
           owner,
           repo,
@@ -226,15 +233,29 @@ export class OctokitGitHub implements GitHubClient {
           page,
         });
         return comments.data;
-      });
-      if (existingId !== null) return { id: existingId, created: false };
+      };
+      const deleteComment = async (id: number) => {
+        try {
+          await octokit.rest.issues.deleteComment({ owner, repo, comment_id: id });
+        } catch (error) {
+          if (!isHttpStatus(error, 404)) throw error;
+        }
+      };
+      const existing = await listIssueCommentIdsByMarker(input.marker, listPage);
+      if (existing.length > 0) {
+        const id = await keepCanonicalComment(existing, deleteComment);
+        return { id, created: false };
+      }
       const created = await octokit.rest.issues.createComment({
         owner,
         repo,
         issue_number: input.issueNumber,
         body: issueCommentBody(input.body, input.marker),
       });
-      return { id: created.data.id, created: true };
+      const after = await listIssueCommentIdsByMarker(input.marker, listPage);
+      const ids = after.includes(created.data.id) ? after : [...after, created.data.id];
+      const id = await keepCanonicalComment(ids, deleteComment);
+      return { id, created: id === created.data.id };
     });
   }
 
@@ -255,6 +276,7 @@ export class OctokitGitHub implements GitHubClient {
   }
 
   private async octokit(installationId: number): Promise<Octokit> {
+    if (this.installationClient) return this.installationClient(installationId);
     const token = await this.getInstallationToken(installationId);
     return new Octokit({ auth: token });
   }
@@ -285,22 +307,26 @@ export class OctokitGitHub implements GitHubClient {
     headBranch: string,
     baseBranch: string,
   ): Promise<{ number: number; url: string } | null> {
-    const response = await octokit.rest.pulls.list({
-      owner,
-      repo,
-      state: "open",
-      head: `${owner}:${headBranch}`,
-      per_page: 20,
-    });
     const fullName = `${owner}/${repo}`.toLowerCase();
-    const match = response.data.find(
-      (pull) =>
-        pull.head.ref === headBranch &&
-        pull.head.repo?.full_name.toLowerCase() === fullName &&
-        pull.base.ref === baseBranch,
-    );
-    if (!match) return null;
-    return { number: match.number, url: match.html_url };
+    for (let page = 1; ; page += 1) {
+      const response = await octokit.rest.pulls.list({
+        owner,
+        repo,
+        state: "open",
+        head: `${owner}:${headBranch}`,
+        base: baseBranch,
+        per_page: OPEN_PULL_PAGE_SIZE,
+        page,
+      });
+      const match = response.data.find(
+        (pull) =>
+          pull.head.ref === headBranch &&
+          pull.head.repo?.full_name.toLowerCase() === fullName &&
+          pull.base.ref === baseBranch,
+      );
+      if (match) return { number: match.number, url: match.html_url };
+      if (response.data.length < OPEN_PULL_PAGE_SIZE) return null;
+    }
   }
 
   private async branchHasContentHash(
@@ -310,21 +336,16 @@ export class OctokitGitHub implements GitHubClient {
     branch: string,
     hash: string,
   ): Promise<boolean> {
-    const maxPages = 2;
-    for (let page = 1; page <= maxPages; page += 1) {
+    return findContentHashInHistory(branch, hash, async (page) => {
       const commits = await octokit.rest.repos.listCommits({
         owner,
         repo,
         sha: branch,
-        per_page: 100,
+        per_page: COMMIT_HISTORY_PAGE_SIZE,
         page,
       });
-      if (commits.data.some((commit) => messageHasContentHash(commit.commit.message, hash))) {
-        return true;
-      }
-      if (commits.data.length < 100) return false;
-    }
-    return false;
+      return commits.data.map((commit) => ({ message: commit.commit.message }));
+    });
   }
 }
 
