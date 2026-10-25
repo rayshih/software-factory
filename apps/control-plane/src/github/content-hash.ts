@@ -26,7 +26,15 @@ export function operationHash(
 function canonicalFiles(files: readonly FileChange[]): FileChange[] {
   return [...files]
     .map((file) => ({ path: file.path, content: file.content }))
-    .sort((left, right) => left.path.localeCompare(right.path));
+    .sort(
+      (left, right) =>
+        compareOrdinal(left.path, right.path) ||
+        compareOrdinal(left.content, right.content),
+    );
+}
+
+function compareOrdinal(left: string, right: string): number {
+  return left < right ? -1 : left > right ? 1 : 0;
 }
 
 export function commitMessage(issueNumber: number, hash: string): string {
