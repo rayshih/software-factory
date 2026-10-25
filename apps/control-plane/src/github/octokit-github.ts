@@ -94,7 +94,7 @@ export class OctokitGitHub implements GitHubClient {
     const parentSha = await this.readRef(octokit, owner, repo, input.branch);
     if (!parentSha) throw new Error(`branch ${input.branch} does not exist on ${input.repo}`);
     const hash = operationHash(input.branch, input.issueNumber, input.files);
-    if (await this.branchHasContentHash(octokit, owner, repo, input.branch, hash)) {
+    if (await this.branchHasContentHash(octokit, owner, repo, input.branch, parentSha, hash)) {
       return { sha: parentSha, created: false };
     }
     const parent = await octokit.rest.git.getCommit({ owner, repo, commit_sha: parentSha });
@@ -122,12 +122,16 @@ export class OctokitGitHub implements GitHubClient {
         repo,
         ref: `heads/${input.branch}`,
         sha: commit.data.sha,
+        force: false,
       });
       return { sha: commit.data.sha, created: true };
     } catch (error) {
       if (isHttpStatus(error, 422) || isHttpStatus(error, 409)) {
         const head = await this.readRef(octokit, owner, repo, input.branch);
-        if (head && (await this.branchHasContentHash(octokit, owner, repo, input.branch, hash))) {
+        if (
+          head &&
+          (await this.branchHasContentHash(octokit, owner, repo, input.branch, head, hash))
+        ) {
           return { sha: head, created: false };
         }
       }
@@ -361,13 +365,14 @@ export class OctokitGitHub implements GitHubClient {
     owner: string,
     repo: string,
     branch: string,
+    headSha: string,
     hash: string,
   ): Promise<boolean> {
-    return findContentHashInHistory(branch, hash, async (page) => {
+    return findContentHashInHistory(branch, headSha, hash, async (page, pinnedSha) => {
       const commits = await octokit.rest.repos.listCommits({
         owner,
         repo,
-        sha: branch,
+        sha: pinnedSha,
         per_page: COMMIT_HISTORY_PAGE_SIZE,
         page,
       });

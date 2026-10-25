@@ -1,6 +1,10 @@
 import type { Octokit } from "@octokit/rest";
 import { describe, expect, it, vi } from "vitest";
-import { commitMessage, operationHash } from "../src/github/content-hash.js";
+import {
+  DuplicateFilePathError,
+  commitMessage,
+  operationHash,
+} from "../src/github/content-hash.js";
 import { CommitHistoryLookupLimitError } from "../src/github/commit-history.js";
 import { operationMarker } from "../src/github/issue-comment.js";
 import { OctokitGitHub } from "../src/github/octokit-github.js";
@@ -75,13 +79,14 @@ describe("OctokitGitHub push history", () => {
   });
 
   it("commits when a short page shows the hash is absent", async () => {
+    const updateRef = vi.fn(async () => ({}));
     const github = githubFor({
       git: {
         getRef: vi.fn(async () => ({ data: { object: { sha: "tip" } } })),
         getCommit: vi.fn(async () => ({ data: { tree: { sha: "tree" } } })),
         createTree: vi.fn(async () => ({ data: { sha: "new-tree" } })),
         createCommit: vi.fn(async () => ({ data: { sha: "new-sha" } })),
-        updateRef: vi.fn(async () => ({})),
+        updateRef,
       },
       repos: {
         listCommits: commitPages([Array.from({ length: 100 }, () => "unrelated"), ["init"]]),
@@ -91,6 +96,101 @@ describe("OctokitGitHub push history", () => {
     await expect(
       github.pushFiles({ installationId: 1, repo, branch, issueNumber: 7, files }),
     ).resolves.toEqual({ sha: "new-sha", created: true });
+    expect(updateRef).toHaveBeenCalledWith(
+      expect.objectContaining({ sha: "new-sha", force: false, ref: `heads/${branch}` }),
+    );
+  });
+
+  it("keeps the captured head when a commit lands between history pages", async () => {
+    const captured = "captured-head";
+    const hash = operationHash(branch, 7, files);
+    const createCommit = vi.fn();
+    const listCommits = vi.fn(async ({ sha, page }: { sha: string; page: number }) => {
+      if (sha !== captured) {
+        return {
+          data: Array.from({ length: page === 1 ? 100 : 1 }, () => ({
+            commit: { message: "shifted window without the hash" },
+          })),
+          headers: {},
+        };
+      }
+      if (page === 1) {
+        return {
+          data: Array.from({ length: 100 }, () => ({ commit: { message: "older" } })),
+          headers: {},
+        };
+      }
+      return { data: [{ commit: { message: commitMessage(7, hash) } }], headers: {} };
+    });
+    const github = githubFor({
+      git: {
+        getRef: vi.fn(async () => ({ data: { object: { sha: captured } } })),
+        createCommit,
+      },
+      repos: { listCommits },
+    });
+
+    await expect(
+      github.pushFiles({ installationId: 1, repo, branch, issueNumber: 7, files }),
+    ).resolves.toEqual({ sha: captured, created: false });
+    expect(listCommits).toHaveBeenCalledWith(expect.objectContaining({ sha: captured, page: 1 }));
+    expect(listCommits).toHaveBeenCalledWith(expect.objectContaining({ sha: captured, page: 2 }));
+    expect(createCommit).not.toHaveBeenCalled();
+  });
+
+  it("rechecks the new head when a non-forced ref update fails", async () => {
+    const moved = Object.assign(new Error("not a fast forward"), { status: 422 });
+    let refReads = 0;
+    const updateRef = vi.fn(async () => {
+      throw moved;
+    });
+    const listCommits = vi.fn(async ({ sha }: { sha: string }) => ({
+      data: [{ commit: { message: sha === "moved-head" ? "other work" : "init" } }],
+      headers: {},
+    }));
+    const github = githubFor({
+      git: {
+        getRef: vi.fn(async () => {
+          refReads += 1;
+          return { data: { object: { sha: refReads === 1 ? "captured-head" : "moved-head" } } };
+        }),
+        getCommit: vi.fn(async () => ({ data: { tree: { sha: "tree" } } })),
+        createTree: vi.fn(async () => ({ data: { sha: "new-tree" } })),
+        createCommit: vi.fn(async () => ({ data: { sha: "orphan-sha" } })),
+        updateRef,
+      },
+      repos: { listCommits },
+    });
+
+    await expect(
+      github.pushFiles({ installationId: 1, repo, branch, issueNumber: 7, files }),
+    ).rejects.toBe(moved);
+    expect(updateRef).toHaveBeenCalledWith(expect.objectContaining({ force: false }));
+    expect(listCommits).toHaveBeenCalledWith(
+      expect.objectContaining({ sha: "moved-head", page: 1 }),
+    );
+  });
+
+  it("rejects a duplicate file path before creating a commit", async () => {
+    const createCommit = vi.fn();
+    const github = githubFor({
+      git: {
+        getRef: vi.fn(async () => ({ data: { object: { sha: "tip" } } })),
+        createCommit,
+      },
+      repos: { listCommits: vi.fn() },
+    });
+
+    await expect(
+      github.pushFiles({
+        installationId: 1,
+        repo,
+        branch,
+        issueNumber: 7,
+        files: [files[0]!, { path: "src/fix.ts", content: "export const other = true;\n" }],
+      }),
+    ).rejects.toBeInstanceOf(DuplicateFilePathError);
+    expect(createCommit).not.toHaveBeenCalled();
   });
 });
 
