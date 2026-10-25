@@ -1,3 +1,5 @@
+import { operationMarker } from "../github/issue-comment.js";
+
 /** Deterministic branch reused by every retry of an issue. */
 export function branchName(issueNumber: number): string {
   if (!Number.isInteger(issueNumber) || issueNumber <= 0) {
@@ -24,6 +26,6 @@ export function triggerIdempotencyKey(task: {
   return `${task.idempotencyKey}:attempts-${task.attempts}:interventions-${task.interventions}`;
 }
 
-export const PR_LINK_MARKER = "<!-- software-factory:pr-link -->";
-export const ACCEPTED_MARKER = "<!-- software-factory:accepted -->";
-export const REJECTED_MARKER = "<!-- software-factory:rejected -->";
+export const PR_LINK_MARKER = operationMarker("pr-link");
+export const ACCEPTED_MARKER = operationMarker("accepted");
+export const REJECTED_MARKER = operationMarker("rejected");
