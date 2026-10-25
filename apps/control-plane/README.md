@@ -56,7 +56,7 @@ docker build -f apps/control-plane/Dockerfile .
 | Agent with no API key, and unit tests                                                | `StubAgentRuntime`                                                           |
 | Merge                                                                                | Not implemented                                                              |
 
-GitHub writes are safe to repeat. The branch name is `factory/issue-<n>` for every attempt. Before creating a pull request the client looks for an open pull request from that branch and updates it instead of opening another. Issue comments carry a marker and are not posted twice. A content hash in the commit message makes a repeated push a no-op.
+GitHub writes are safe to repeat. The branch name is `factory/issue-<n>` for every attempt. Before creating a pull request the client looks for an open pull request from that branch and returns it unchanged instead of opening another. Issue comments carry an operation marker on its own line and are not posted twice; cleanup only removes this app's own copies. A content hash in the commit message makes a repeated push a no-op.
 
 `tasks.idempotency_key` is `owner/repo#issue#attemptGroup`. One active task per issue is enforced by a partial unique index. A new attempt group starts only after the previous task is `accepted`, `rejected`, or `failed`. Retries and "changes requested" keep the same branch.
 
