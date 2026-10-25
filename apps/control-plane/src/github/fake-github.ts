@@ -6,7 +6,7 @@ import type {
   PullRequestRef,
   PushResult,
 } from "./client.js";
-import { issueCommentBody } from "./issue-comment.js";
+import { commentHasExactMarker, issueCommentBody } from "./issue-comment.js";
 
 interface CommitState {
   sha: string;
@@ -122,6 +122,13 @@ export class FakeGitHub implements GitHubClient {
     return this.repo(fullName).pulls.filter((pull) => pull.state === "open");
   }
 
+  seedIssueComment(fullName: string, issueNumber: number, body: string): number {
+    const repo = this.repo(fullName);
+    const id = repo.nextComment++;
+    repo.comments.push({ id, issueNumber, body });
+    return id;
+  }
+
   async getInstallationToken(installationId: number): Promise<string> {
     return this.tokens.get(installationId) ?? `ghs_fake_${installationId}`;
   }
@@ -215,8 +222,6 @@ export class FakeGitHub implements GitHubClient {
         pull.baseBranch === input.baseBranch,
     );
     if (existing) {
-      existing.title = input.title;
-      existing.body = input.body;
       return { number: existing.number, url: existing.url, created: false };
     }
     const comparison = await this.compare({
@@ -253,7 +258,9 @@ export class FakeGitHub implements GitHubClient {
   }): Promise<IssueCommentResult> {
     const repo = this.repo(input.repo);
     const existing = repo.comments.find(
-      (comment) => comment.issueNumber === input.issueNumber && comment.body.includes(input.marker),
+      (comment) =>
+        comment.issueNumber === input.issueNumber &&
+        commentHasExactMarker(comment.body, input.marker),
     );
     if (existing) return { id: existing.id, created: false };
     const comment: CommentState = {

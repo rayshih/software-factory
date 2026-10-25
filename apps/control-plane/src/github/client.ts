@@ -31,6 +31,9 @@ export interface IssueCommentResult {
  * GitHub operations the factory is allowed to perform.
  * There is no merge method. A human merges outside this process.
  * Every method is safe to call again with the same inputs.
+ * An existing pull request is returned as-is. Title and body stay whatever
+ * a reviewer already wrote. Issue comments use an operation marker on its
+ * own line, and only comments from this GitHub App are treated as ours.
  *
  * installationId and repo are supplied by the orchestrator from trusted
  * project configuration. The coding agent does not choose the repository.

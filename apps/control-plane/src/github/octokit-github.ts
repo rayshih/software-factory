@@ -12,9 +12,11 @@ import type {
 import { COMMIT_HISTORY_PAGE_SIZE, findContentHashInHistory } from "./commit-history.js";
 import { isHttpStatus } from "./errors.js";
 import {
+  commentHasExactMarker,
+  isOurAppComment,
   issueCommentBody,
   keepCanonicalComment,
-  listIssueCommentIdsByMarker,
+  type IssueComment,
 } from "./issue-comment.js";
 import { parseRepo } from "./repo.js";
 
@@ -30,12 +32,18 @@ const OPEN_PULL_PAGE_SIZE = 100;
  */
 export class OctokitGitHub implements GitHubClient {
   private readonly auth: InstallationAuth;
+  private readonly appId: number;
 
   constructor(
     appId: string,
     privateKey: string,
     private readonly installationClient?: (installationId: number) => Promise<Octokit>,
   ) {
+    const parsed = Number(appId);
+    if (!Number.isInteger(parsed) || parsed <= 0) {
+      throw new Error(`invalid GitHub app id: ${appId}`);
+    }
+    this.appId = parsed;
     this.auth = createAppAuth({ appId, privateKey });
   }
 
@@ -174,13 +182,6 @@ export class OctokitGitHub implements GitHubClient {
       input.baseBranch,
     );
     if (existing) {
-      await octokit.rest.pulls.update({
-        owner,
-        repo,
-        pull_number: existing.number,
-        title: input.title,
-        body: input.body,
-      });
       return { number: existing.number, url: existing.url, created: false };
     }
     try {
@@ -224,16 +225,8 @@ export class OctokitGitHub implements GitHubClient {
     return this.withIssueCommentLock(lockKey, async () => {
       const octokit = await this.octokit(input.installationId);
       const { owner, repo } = parseRepo(input.repo);
-      const listPage = async (page: number) => {
-        const comments = await octokit.rest.issues.listComments({
-          owner,
-          repo,
-          issue_number: input.issueNumber,
-          per_page: 100,
-          page,
-        });
-        return comments.data;
-      };
+      const listPage = (page: number) =>
+        this.listIssueComments(octokit, owner, repo, input.issueNumber, page);
       const deleteComment = async (id: number) => {
         try {
           await octokit.rest.issues.deleteComment({ owner, repo, comment_id: id });
@@ -241,7 +234,8 @@ export class OctokitGitHub implements GitHubClient {
           if (!isHttpStatus(error, 404)) throw error;
         }
       };
-      const existing = await listIssueCommentIdsByMarker(input.marker, listPage);
+      const ownedIds = async () => this.ownedCommentIds(input.marker, listPage);
+      const existing = await ownedIds();
       if (existing.length > 0) {
         const id = await keepCanonicalComment(existing, deleteComment);
         return { id, created: false };
@@ -252,11 +246,44 @@ export class OctokitGitHub implements GitHubClient {
         issue_number: input.issueNumber,
         body: issueCommentBody(input.body, input.marker),
       });
-      const after = await listIssueCommentIdsByMarker(input.marker, listPage);
+      const after = await ownedIds();
       const ids = after.includes(created.data.id) ? after : [...after, created.data.id];
       const id = await keepCanonicalComment(ids, deleteComment);
       return { id, created: id === created.data.id };
     });
+  }
+
+  private async listIssueComments(
+    octokit: Octokit,
+    owner: string,
+    repo: string,
+    issueNumber: number,
+    page: number,
+  ): Promise<IssueComment[]> {
+    const comments = await octokit.rest.issues.listComments({
+      owner,
+      repo,
+      issue_number: issueNumber,
+      per_page: 100,
+      page,
+    });
+    return comments.data;
+  }
+
+  private async ownedCommentIds(
+    marker: string,
+    listPage: (page: number) => Promise<readonly IssueComment[]>,
+  ): Promise<number[]> {
+    const ids: number[] = [];
+    for (let page = 1; ; page += 1) {
+      const comments = await listPage(page);
+      for (const comment of comments) {
+        if (isOurAppComment(comment, this.appId) && commentHasExactMarker(comment.body, marker)) {
+          ids.push(comment.id);
+        }
+      }
+      if (comments.length < 100) return ids;
+    }
   }
 
   private async withIssueCommentLock<T>(key: string, operation: () => Promise<T>): Promise<T> {

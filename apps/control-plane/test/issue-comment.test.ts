@@ -1,13 +1,16 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  commentHasExactMarker,
   findIssueCommentByMarker,
+  isOurAppComment,
   keepCanonicalComment,
   listIssueCommentIdsByMarker,
+  operationMarker,
 } from "../src/github/issue-comment.js";
 
 describe("findIssueCommentByMarker", () => {
   it("searches beyond five full pages", async () => {
-    const marker = "<!-- software-factory:pr-link -->";
+    const marker = operationMarker("pr-link");
     const listPage = vi.fn(async (page: number) =>
       Array.from({ length: 100 }, (_, index) => ({
         id: (page - 1) * 100 + index + 1,
@@ -20,7 +23,7 @@ describe("findIssueCommentByMarker", () => {
   });
 
   it("collects every marker comment through the last short page", async () => {
-    const marker = "<!-- software-factory:pr-link -->";
+    const marker = operationMarker("pr-link");
     const listPage = vi.fn(async (page: number) => {
       if (page === 1) {
         return [
@@ -38,6 +41,36 @@ describe("findIssueCommentByMarker", () => {
 
     await expect(listIssueCommentIdsByMarker(marker, listPage)).resolves.toEqual([2, 150]);
     expect(listPage).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("operation markers", () => {
+  it("matches only a whole line and only this app's bot comments", () => {
+    const marker = operationMarker("pr-link");
+    const ours = {
+      id: 1,
+      body: `Opened\n\n${marker}`,
+      user: { login: "forgeline-exp-bot[bot]", type: "Bot" },
+      performed_via_github_app: { id: 42, slug: "forgeline-exp-bot" },
+    };
+    expect(commentHasExactMarker(`see ${marker} above`, marker)).toBe(false);
+    expect(commentHasExactMarker(operationMarker("pr-link-extra"), marker)).toBe(false);
+    expect(commentHasExactMarker(marker, marker)).toBe(true);
+    expect(isOurAppComment(ours, 42)).toBe(true);
+    expect(isOurAppComment({ ...ours, user: { login: "ray", type: "User" } }, 42)).toBe(false);
+    expect(
+      isOurAppComment(
+        {
+          ...ours,
+          user: { login: "other[bot]", type: "Bot" },
+          performed_via_github_app: { id: 99, slug: "other" },
+        },
+        42,
+      ),
+    ).toBe(false);
+    expect(isOurAppComment({ ...ours, user: { login: "not-the-app[bot]", type: "Bot" } }, 42)).toBe(
+      false,
+    );
   });
 });
 

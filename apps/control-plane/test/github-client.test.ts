@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { FakeGitHub } from "../src/github/fake-github.js";
+import { operationMarker } from "../src/github/issue-comment.js";
 
 const repo = "rayshih/sf-demo-todo-api";
 const files = [{ path: "src/fix.ts", content: "export const fixed = true;\n" }];
@@ -65,7 +66,8 @@ describe("FakeGitHub", () => {
     expect(again.number).toBe(opened.number);
     expect(github.pullsCreated).toHaveLength(1);
     expect(github.openPullRequestCalls).toBe(2);
-    expect(github.openPulls(repo)[0]?.title).toBe("Fix again");
+    expect(github.openPulls(repo)[0]?.title).toBe("Fix");
+    expect(github.openPulls(repo)[0]?.body).toBe("body");
   });
 
   it("does not open a pull request when the branch has no new commits", async () => {
@@ -104,6 +106,8 @@ describe("FakeGitHub", () => {
     expect(opened.created).toBe(false);
     expect(opened.number).toBe(seeded.number);
     expect(github.pullsCreated).toHaveLength(0);
+    expect(github.openPulls(repo)[0]?.title).toBe("existing");
+    expect(github.openPulls(repo)[0]?.body).toBe("existing");
   });
 
   it("does not reuse an open pull request targeting a different base branch", async () => {
@@ -249,7 +253,7 @@ describe("FakeGitHub", () => {
   it("posts one issue comment per marker when the body omits the marker", async () => {
     const github = new FakeGitHub();
     github.seedRepo(repo);
-    const marker = "<!-- software-factory:pr-link -->";
+    const marker = operationMarker("pr-link");
     const first = await github.commentOnIssue({
       installationId: 1,
       repo,
@@ -269,6 +273,23 @@ describe("FakeGitHub", () => {
     expect(second.id).toBe(first.id);
     expect(github.commentsCreated).toHaveLength(1);
     expect(github.commentsCreated[0]?.body).toContain(marker);
+  });
+
+  it("posts again when a human comment only quotes the operation marker", async () => {
+    const github = new FakeGitHub();
+    github.seedRepo(repo);
+    const marker = operationMarker("pr-link");
+    github.seedIssueComment(repo, 7, `The bot used ${marker} in its note.`);
+    const posted = await github.commentOnIssue({
+      installationId: 1,
+      repo,
+      issueNumber: 7,
+      marker,
+      body: "Opened pull request #12",
+    });
+    expect(posted.created).toBe(true);
+    expect(github.commentsCreated).toHaveLength(1);
+    expect(github.commentsCreated[0]?.body.split("\n").at(-1)).toBe(marker);
   });
 
   it("reports behind when only the base branch moves", async () => {

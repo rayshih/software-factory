@@ -2,12 +2,22 @@ import type { Octokit } from "@octokit/rest";
 import { describe, expect, it, vi } from "vitest";
 import { commitMessage, operationHash } from "../src/github/content-hash.js";
 import { CommitHistoryLookupLimitError } from "../src/github/commit-history.js";
+import { operationMarker } from "../src/github/issue-comment.js";
 import { OctokitGitHub } from "../src/github/octokit-github.js";
 
 const repo = "rayshih/sf-demo-todo-api";
 const files = [{ path: "src/fix.ts", content: "export const fixed = true;\n" }];
 const branch = "factory/issue-7";
-const marker = "<!-- software-factory:pr-link -->";
+const marker = operationMarker("pr-link");
+
+function appComment(id: number, body: string, appId = 1) {
+  return {
+    id,
+    body,
+    user: { login: "forgeline-exp-bot[bot]", type: "Bot" },
+    performed_via_github_app: { id: appId, slug: "forgeline-exp-bot" },
+  };
+}
 
 function githubFor(rest: Record<string, unknown>): OctokitGitHub {
   return new OctokitGitHub("1", "unused", async () => ({ rest }) as unknown as Octokit);
@@ -125,7 +135,7 @@ describe("OctokitGitHub open pull lookup", () => {
       created: false,
     });
     expect(pullsCreate).not.toHaveBeenCalled();
-    expect(pullsUpdate).toHaveBeenCalledOnce();
+    expect(pullsUpdate).not.toHaveBeenCalled();
     expect(pullsList).toHaveBeenCalledTimes(2);
   });
 
@@ -186,7 +196,7 @@ describe("OctokitGitHub issue comments", () => {
           data: page === 1 ? [...comments] : [],
         })),
         createComment: vi.fn(async ({ body }: { body: string }) => {
-          comments.push({ id: 3, body: `earlier\n\n${marker}` }, { id: 8, body });
+          comments.push(appComment(3, `earlier\n\n${marker}`), appComment(8, body));
           return { data: { id: 8 } };
         }),
         deleteComment,
@@ -207,10 +217,7 @@ describe("OctokitGitHub issue comments", () => {
   });
 
   it("deletes duplicate marker comments it finds before creating another", async () => {
-    const comments = [
-      { id: 4, body: `first\n\n${marker}` },
-      { id: 9, body: `second\n\n${marker}` },
-    ];
+    const comments = [appComment(4, `first\n\n${marker}`), appComment(9, `second\n\n${marker}`)];
     const createComment = vi.fn();
     const github = githubFor({
       issues: {
@@ -236,5 +243,46 @@ describe("OctokitGitHub issue comments", () => {
     ).resolves.toEqual({ id: 4, created: false });
     expect(createComment).not.toHaveBeenCalled();
     expect(comments.map((comment) => comment.id)).toEqual([4]);
+  });
+
+  it("leaves a human comment that quotes the marker and still posts the app comment", async () => {
+    const human = {
+      id: 4,
+      body: marker,
+      user: { login: "ray", type: "User" },
+      performed_via_github_app: null,
+    };
+    const otherBot = {
+      id: 5,
+      body: `copied\n${marker}`,
+      user: { login: "other[bot]", type: "Bot" },
+      performed_via_github_app: { id: 99, slug: "other" },
+    };
+    const comments = [human, otherBot];
+    const deleteComment = vi.fn();
+    const github = githubFor({
+      issues: {
+        listComments: vi.fn(async ({ page }: { page: number }) => ({
+          data: page === 1 ? [...comments] : [],
+        })),
+        createComment: vi.fn(async ({ body }: { body: string }) => {
+          comments.push(appComment(11, body));
+          return { data: { id: 11 } };
+        }),
+        deleteComment,
+      },
+    });
+
+    await expect(
+      github.commentOnIssue({
+        installationId: 1,
+        repo,
+        issueNumber: 7,
+        marker,
+        body: "Opened pull request #12",
+      }),
+    ).resolves.toEqual({ id: 11, created: true });
+    expect(deleteComment).not.toHaveBeenCalled();
+    expect(comments.map((comment) => comment.id)).toEqual([4, 5, 11]);
   });
 });
