@@ -8,10 +8,25 @@ export interface FileChange {
 export const CONTENT_HASH_TRAILER = "Factory-Content-Hash:";
 
 export function contentHash(files: readonly FileChange[]): string {
-  const canonical = [...files]
+  return createHash("sha256")
+    .update(JSON.stringify(canonicalFiles(files)))
+    .digest("hex");
+}
+
+export function operationHash(
+  branch: string,
+  issueNumber: number,
+  files: readonly FileChange[],
+): string {
+  return createHash("sha256")
+    .update(JSON.stringify({ branch, issueNumber, files: canonicalFiles(files) }))
+    .digest("hex");
+}
+
+function canonicalFiles(files: readonly FileChange[]): FileChange[] {
+  return [...files]
     .map((file) => ({ path: file.path, content: file.content }))
     .sort((left, right) => left.path.localeCompare(right.path));
-  return createHash("sha256").update(JSON.stringify(canonical)).digest("hex");
 }
 
 export function commitMessage(issueNumber: number, hash: string): string {
