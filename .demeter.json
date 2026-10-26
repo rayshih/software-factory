@@ -4,7 +4,7 @@
     "enabled": true,
     "requested_mode": "review_only",
     "require_pr_loop_coverage": true,
-    "treat_draft_as_ready_to_review": false,
+    "treat_draft_as_ready_to_review": true,
     "review_policy_path": ".demeter/review/policy.toml",
     "scan": {
       "open_pr_limit": 10
