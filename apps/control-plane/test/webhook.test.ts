@@ -76,6 +76,32 @@ describe("delivery dedupe", () => {
     expect(await deps.store.listTasks()).toHaveLength(1);
   });
 
+  it("retries enqueueing a queued task after a transient enqueue failure", async () => {
+    const { deps } = await createDeps();
+    const enqueued: string[] = [];
+    let calls = 0;
+    deps.enqueue = async (task) => {
+      calls += 1;
+      if (calls === 1) throw new Error("queue unavailable");
+      enqueued.push(task.id);
+      return { id: "run_retried" };
+    };
+
+    const first = await postGithub(deps, "issues", "delivery-failed", labeledPayload());
+    expect(first.status).toBe(500);
+
+    const retry = await postGithub(deps, "issues", "delivery-failed", labeledPayload());
+    expect(retry.status).toBe(200);
+    const body = (await retry.json()) as { disposition: string; taskId: string };
+    expect(body.disposition).toBe("queued");
+    expect(calls).toBe(2);
+    expect(enqueued).toEqual([body.taskId]);
+    expect(await deps.store.listTasks()).toHaveLength(1);
+    expect(
+      (await deps.store.listEvents(body.taskId)).filter((event) => event.type === "enqueued"),
+    ).toHaveLength(1);
+  });
+
   it("returns 500 while another caller holds a fresh claim and does not enqueue", async () => {
     const { deps, enqueued } = await createDeps();
     expect(

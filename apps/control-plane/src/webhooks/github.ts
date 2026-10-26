@@ -3,6 +3,7 @@ import { z } from "zod";
 import { verifyGithubSignature } from "../github/signature.js";
 import { normalizeRepo } from "../github/repo.js";
 import type { WebhookDependencies } from "../pipeline.js";
+import type { TaskRecord } from "../store/types.js";
 import { isUniqueViolation } from "../github/errors.js";
 import { branchName } from "../tasks/ids.js";
 import { applyCheckSuite, applyPullRequestClosed, applyReview } from "../tasks/outcomes.js";
@@ -174,6 +175,13 @@ async function handleIssues(
   const issueNumber = parsed.data.issue.number;
   const active = await deps.store.findActiveTask(repo, issueNumber);
   if (active) {
+    if (active.status === "queued") {
+      const events = await deps.store.listEvents(active.id);
+      if (!events.some((event) => event.type === "enqueued")) {
+        await enqueueTask(deps, active);
+        return { disposition: "queued", body: { taskId: active.id } };
+      }
+    }
     await deps.store.appendEvent({
       taskId: active.id,
       type: "duplicate_label",
@@ -205,13 +213,31 @@ async function handleIssues(
       payload: { attemptGroup, idempotencyKey: task.idempotencyKey },
       createdAt: now,
     });
-    await deps.enqueue(task);
+    await enqueueTask(deps, task);
     return { disposition: "queued", body: { taskId: task.id } };
   } catch (error) {
     if (!isUniqueViolation(error)) throw error;
     const raced = await deps.store.findActiveTask(repo, issueNumber);
+    if (raced?.status === "queued") {
+      const events = await deps.store.listEvents(raced.id);
+      if (!events.some((event) => event.type === "enqueued")) {
+        await enqueueTask(deps, raced);
+        return { disposition: "queued", body: { taskId: raced.id } };
+      }
+    }
     return { disposition: "already_active", body: { taskId: raced?.id ?? null } };
   }
+}
+
+async function enqueueTask(deps: WebhookDependencies, task: TaskRecord) {
+  const run = await deps.enqueue(task);
+  await deps.store.appendEvent({
+    taskId: task.id,
+    type: "enqueued",
+    message: `Created queue run ${run.id}`,
+    payload: { runId: run.id },
+    createdAt: deps.clock.now(),
+  });
 }
 
 async function handleCheckSuite(
