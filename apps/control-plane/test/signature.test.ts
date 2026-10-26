@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { signGithubBody, verifyGithubSignature } from "../src/github/signature.js";
-import { createApp } from "../src/app.js";
+import { createApp, MAX_GITHUB_WEBHOOK_BODY_BYTES } from "../src/app.js";
 import { createDeps, WEBHOOK_SECRET } from "./helpers.js";
 
 describe("GitHub webhook signature", () => {
@@ -47,5 +47,42 @@ describe("GitHub webhook signature", () => {
     });
     expect(response.status).toBe(401);
     expect(WEBHOOK_SECRET).not.toBe("nope");
+  });
+
+  it("rejects a webhook whose declared body is too large", async () => {
+    const { deps } = await createDeps();
+    const response = await createApp(deps).request("/webhooks/github", {
+      method: "POST",
+      headers: { "content-length": String(MAX_GITHUB_WEBHOOK_BODY_BYTES + 1) },
+      body: "{}",
+    });
+
+    expect(response.status).toBe(413);
+    expect(await response.json()).toEqual({ ok: false, error: "payload too large" });
+  });
+
+  it("stops reading and rejects a chunked webhook that exceeds the limit", async () => {
+    const { deps } = await createDeps();
+    let cancelled = false;
+    const chunk = new Uint8Array(Math.floor(MAX_GITHUB_WEBHOOK_BODY_BYTES / 2) + 1);
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(chunk);
+        controller.enqueue(chunk);
+      },
+      cancel() {
+        cancelled = true;
+      },
+    });
+    const request = new Request("http://localhost/webhooks/github", {
+      method: "POST",
+      body,
+      duplex: "half",
+    } as RequestInit & { duplex: "half" });
+
+    const response = await createApp(deps).request(request);
+
+    expect(response.status).toBe(413);
+    expect(cancelled).toBe(true);
   });
 });
