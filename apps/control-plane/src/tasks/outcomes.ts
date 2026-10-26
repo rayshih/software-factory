@@ -133,8 +133,7 @@ export async function applyReview(
       const idempotencyKey = triggerIdempotencyKey(task);
       const events = await deps.store.listEvents(task.id);
       const enqueueRecorded = events.some(
-        (event) =>
-          event.type === "enqueued" && event.payload.idempotencyKey === idempotencyKey,
+        (event) => event.type === "enqueued" && event.payload.idempotencyKey === idempotencyKey,
       );
       if (!enqueueRecorded) {
         await enqueueReviewRun(deps, task, idempotencyKey);

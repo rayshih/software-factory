@@ -9,10 +9,7 @@ export interface PipelineDependencies {
   github: GitHubClient;
   agent: AgentRuntime;
   /** Submit once per key and return the existing run when the same key is retried. */
-  enqueue: (
-    task: TaskRecord,
-    options: { idempotencyKey: string },
-  ) => Promise<{ id: string }>;
+  enqueue: (task: TaskRecord, options: { idempotencyKey: string }) => Promise<{ id: string }>;
   allowedRepos: ReadonlySet<string>;
   baseBranch: string;
   clock: Clock;
