@@ -63,7 +63,7 @@ export async function createDeps(options?: {
     store,
     github,
     agent: options?.agent ?? new StubAgentRuntime(),
-    enqueue: async (task) => {
+    enqueue: async (task, _options) => {
       enqueued.push(task.id);
       return { id: `run_${enqueued.length}` };
     },

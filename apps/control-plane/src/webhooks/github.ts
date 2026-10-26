@@ -5,7 +5,7 @@ import { normalizeRepo } from "../github/repo.js";
 import type { WebhookDependencies } from "../pipeline.js";
 import type { TaskRecord } from "../store/types.js";
 import { isUniqueViolation } from "../github/errors.js";
-import { branchName } from "../tasks/ids.js";
+import { branchName, triggerIdempotencyKey } from "../tasks/ids.js";
 import { applyCheckSuite, applyPullRequestClosed, applyReview } from "../tasks/outcomes.js";
 
 const labeledPayload = z.object({
@@ -230,7 +230,9 @@ async function handleIssues(
 }
 
 async function enqueueTask(deps: WebhookDependencies, task: TaskRecord) {
-  const run = await deps.enqueue(task);
+  // Recording the run is not atomic with submitting it. The queue adapter must
+  // therefore deduplicate retries at the external side-effect boundary.
+  const run = await deps.enqueue(task, { idempotencyKey: triggerIdempotencyKey(task) });
   await deps.store.appendEvent({
     taskId: task.id,
     type: "enqueued",

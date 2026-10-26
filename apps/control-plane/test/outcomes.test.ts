@@ -47,7 +47,7 @@ async function setup(status: TaskRecord["status"]) {
     store,
     github,
     agent,
-    enqueue: async (task) => {
+    enqueue: async (task, _options) => {
       enqueued.push(task.id);
       return { id: "run_1" };
     },

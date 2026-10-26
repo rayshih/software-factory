@@ -1,6 +1,6 @@
 import type { PipelineDependencies } from "../pipeline.js";
 import type { TaskRecord } from "../store/types.js";
-import { ACCEPTED_MARKER, REJECTED_MARKER } from "./ids.js";
+import { ACCEPTED_MARKER, REJECTED_MARKER, triggerIdempotencyKey } from "./ids.js";
 import { canTransition, isTerminal } from "./status.js";
 import { transitionTask } from "./transition.js";
 
@@ -154,7 +154,7 @@ export async function applyReview(
         payload: { interventions: task.interventions + 1 },
       },
     );
-    await deps.enqueue(next);
+    await deps.enqueue(next, { idempotencyKey: triggerIdempotencyKey(next) });
     return { task: next, disposition: "requeued" };
   }
 

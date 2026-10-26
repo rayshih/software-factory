@@ -102,6 +102,43 @@ describe("delivery dedupe", () => {
     ).toHaveLength(1);
   });
 
+  it("deduplicates enqueueing when recording the first queue run fails", async () => {
+    const { deps } = await createDeps();
+    const runs = new Map<string, { id: string }>();
+    let enqueueCalls = 0;
+    deps.enqueue = async (_task, options) => {
+      enqueueCalls += 1;
+      const existing = runs.get(options.idempotencyKey);
+      if (existing) return existing;
+      const run = { id: `run_${runs.size + 1}` };
+      runs.set(options.idempotencyKey, run);
+      return run;
+    };
+
+    const appendEvent = deps.store.appendEvent.bind(deps.store);
+    let failEnqueuedEvent = true;
+    deps.store.appendEvent = async (input) => {
+      if (input.type === "enqueued" && failEnqueuedEvent) {
+        failEnqueuedEvent = false;
+        throw new Error("event store unavailable");
+      }
+      return appendEvent(input);
+    };
+
+    const first = await postGithub(deps, "issues", "delivery-record-failed", labeledPayload());
+    expect(first.status).toBe(500);
+    const retry = await postGithub(deps, "issues", "delivery-record-failed", labeledPayload());
+    expect(retry.status).toBe(200);
+
+    const body = (await retry.json()) as { disposition: string; taskId: string };
+    expect(body.disposition).toBe("queued");
+    expect(enqueueCalls).toBe(2);
+    expect(runs.size).toBe(1);
+    expect(
+      (await deps.store.listEvents(body.taskId)).filter((event) => event.type === "enqueued"),
+    ).toMatchObject([{ payload: { runId: "run_1" } }]);
+  });
+
   it("returns 500 while another caller holds a fresh claim and does not enqueue", async () => {
     const { deps, enqueued } = await createDeps();
     expect(
