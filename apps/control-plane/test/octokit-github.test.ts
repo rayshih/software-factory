@@ -7,7 +7,7 @@ import {
 } from "../src/github/content-hash.js";
 import { CommitHistoryLookupLimitError } from "../src/github/commit-history.js";
 import { operationMarker } from "../src/github/issue-comment.js";
-import { OctokitGitHub } from "../src/github/octokit-github.js";
+import { OctokitGitHub, UnsupportedFileModeError } from "../src/github/octokit-github.js";
 
 const repo = "rayshih/sf-demo-todo-api";
 const files = [{ path: "src/fix.ts", content: "export const fixed = true;\n" }];
@@ -84,6 +84,7 @@ describe("OctokitGitHub push history", () => {
       git: {
         getRef: vi.fn(async () => ({ data: { object: { sha: "tip" } } })),
         getCommit: vi.fn(async () => ({ data: { tree: { sha: "tree" } } })),
+        getTree: vi.fn(async () => ({ data: { tree: [], truncated: false } })),
         createTree: vi.fn(async () => ({ data: { sha: "new-tree" } })),
         createCommit: vi.fn(async () => ({ data: { sha: "new-sha" } })),
         updateRef,
@@ -155,6 +156,7 @@ describe("OctokitGitHub push history", () => {
           return { data: { object: { sha: refReads === 1 ? "captured-head" : "moved-head" } } };
         }),
         getCommit: vi.fn(async () => ({ data: { tree: { sha: "tree" } } })),
+        getTree: vi.fn(async () => ({ data: { tree: [], truncated: false } })),
         createTree: vi.fn(async () => ({ data: { sha: "new-tree" } })),
         createCommit: vi.fn(async () => ({ data: { sha: "orphan-sha" } })),
         updateRef,
@@ -191,6 +193,122 @@ describe("OctokitGitHub push history", () => {
       }),
     ).rejects.toBeInstanceOf(DuplicateFilePathError);
     expect(createCommit).not.toHaveBeenCalled();
+  });
+
+  it("keeps mode 100755 when editing an executable file", async () => {
+    const createTree = vi.fn(async () => ({ data: { sha: "new-tree" } }));
+    const getTree = vi.fn(async ({ tree_sha }: { tree_sha: string }) => {
+      if (tree_sha === "tree") {
+        return {
+          data: {
+            truncated: false,
+            tree: [{ path: "scripts", mode: "040000", type: "tree", sha: "scripts-tree" }],
+          },
+        };
+      }
+      return {
+        data: {
+          truncated: false,
+          tree: [{ path: "deploy.sh", mode: "100755", type: "blob", sha: "deploy-blob" }],
+        },
+      };
+    });
+    const github = githubFor({
+      git: {
+        getRef: vi.fn(async () => ({ data: { object: { sha: "tip" } } })),
+        getCommit: vi.fn(async () => ({ data: { tree: { sha: "tree" } } })),
+        getTree,
+        createTree,
+        createCommit: vi.fn(async () => ({ data: { sha: "new-sha" } })),
+        updateRef: vi.fn(async () => ({})),
+      },
+      repos: { listCommits: commitPages([["init"]]) },
+    });
+
+    await github.pushFiles({
+      installationId: 1,
+      repo,
+      branch,
+      issueNumber: 7,
+      files: [{ path: "scripts/deploy.sh", content: "#!/bin/sh\necho updated\n" }],
+    });
+
+    expect(createTree).toHaveBeenCalledWith(
+      expect.objectContaining({
+        base_tree: "tree",
+        tree: [
+          expect.objectContaining({
+            path: "scripts/deploy.sh",
+            mode: "100755",
+            type: "blob",
+            content: "#!/bin/sh\necho updated\n",
+          }),
+        ],
+      }),
+    );
+  });
+
+  it("uses mode 100644 for a new file", async () => {
+    const createTree = vi.fn(async () => ({ data: { sha: "new-tree" } }));
+    const github = githubFor({
+      git: {
+        getRef: vi.fn(async () => ({ data: { object: { sha: "tip" } } })),
+        getCommit: vi.fn(async () => ({ data: { tree: { sha: "tree" } } })),
+        getTree: vi.fn(async () => ({
+          data: {
+            truncated: false,
+            tree: [{ path: "scripts", mode: "040000", type: "tree", sha: "scripts-tree" }],
+          },
+        })),
+        createTree,
+        createCommit: vi.fn(async () => ({ data: { sha: "new-sha" } })),
+        updateRef: vi.fn(async () => ({})),
+      },
+      repos: { listCommits: commitPages([["init"]]) },
+    });
+
+    await github.pushFiles({
+      installationId: 1,
+      repo,
+      branch,
+      issueNumber: 7,
+      files: [{ path: "src/new-file.ts", content: "export const added = true;\n" }],
+    });
+
+    expect(createTree).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tree: [expect.objectContaining({ path: "src/new-file.ts", mode: "100644", type: "blob" })],
+      }),
+    );
+  });
+
+  it("rejects an edit that would turn a symlink into a regular file", async () => {
+    const createTree = vi.fn();
+    const github = githubFor({
+      git: {
+        getRef: vi.fn(async () => ({ data: { object: { sha: "tip" } } })),
+        getCommit: vi.fn(async () => ({ data: { tree: { sha: "tree" } } })),
+        getTree: vi.fn(async () => ({
+          data: {
+            truncated: false,
+            tree: [{ path: "scripts", mode: "120000", type: "blob", sha: "link-blob" }],
+          },
+        })),
+        createTree,
+      },
+      repos: { listCommits: commitPages([["init"]]) },
+    });
+
+    await expect(
+      github.pushFiles({
+        installationId: 1,
+        repo,
+        branch,
+        issueNumber: 7,
+        files: [{ path: "scripts", content: "#!/bin/sh\n" }],
+      }),
+    ).rejects.toBeInstanceOf(UnsupportedFileModeError);
+    expect(createTree).not.toHaveBeenCalled();
   });
 });
 

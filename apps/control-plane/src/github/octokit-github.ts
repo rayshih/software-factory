@@ -24,6 +24,28 @@ type InstallationAuth = ReturnType<typeof createAppAuth>;
 const issueCommentLocks = new Map<string, Promise<void>>();
 const OPEN_PULL_PAGE_SIZE = 100;
 
+interface TreeEntry {
+  mode?: string;
+  type?: string;
+  sha?: string;
+}
+
+/**
+ * The path already exists as something other than a regular file.
+ * Rewriting it as a blob would change a symlink, directory, or submodule into a file.
+ */
+export class UnsupportedFileModeError extends Error {
+  readonly path: string;
+  readonly mode: string;
+
+  constructor(path: string, mode: string) {
+    super(`cannot update ${path}: existing tree entry mode ${mode} is not a regular file`);
+    this.name = "UnsupportedFileModeError";
+    this.path = path;
+    this.mode = mode;
+  }
+}
+
 /**
  * GitHub App client. Mints an installation token per call via @octokit/auth-app.
  * Does not merge pull requests.
@@ -98,16 +120,28 @@ export class OctokitGitHub implements GitHubClient {
       return { sha: parentSha, created: false };
     }
     const parent = await octokit.rest.git.getCommit({ owner, repo, commit_sha: parentSha });
+    const treeCache = new Map<string, Map<string, TreeEntry>>();
+    const treeEntries = [];
+    for (const file of input.files) {
+      treeEntries.push({
+        path: file.path,
+        mode: await this.regularFileMode(
+          octokit,
+          owner,
+          repo,
+          parent.data.tree.sha,
+          file.path,
+          treeCache,
+        ),
+        type: "blob" as const,
+        content: file.content,
+      });
+    }
     const tree = await octokit.rest.git.createTree({
       owner,
       repo,
       base_tree: parent.data.tree.sha,
-      tree: input.files.map((file) => ({
-        path: file.path,
-        mode: "100644" as const,
-        type: "blob" as const,
-        content: file.content,
-      })),
+      tree: treeEntries,
     });
     const commit = await octokit.rest.git.createCommit({
       owner,
@@ -358,6 +392,61 @@ export class OctokitGitHub implements GitHubClient {
       if (match) return { number: match.number, url: match.html_url };
       if (response.data.length < OPEN_PULL_PAGE_SIZE) return null;
     }
+  }
+
+  private async listTree(
+    octokit: Octokit,
+    owner: string,
+    repo: string,
+    treeSha: string,
+    cache: Map<string, Map<string, TreeEntry>>,
+  ): Promise<Map<string, TreeEntry>> {
+    const cached = cache.get(treeSha);
+    if (cached) return cached;
+    const response = await octokit.rest.git.getTree({ owner, repo, tree_sha: treeSha });
+    if (response.data.truncated) {
+      throw new Error(`tree ${treeSha} listing was truncated, so file modes cannot be preserved`);
+    }
+    const entries = new Map<string, TreeEntry>();
+    for (const entry of response.data.tree) {
+      if (!entry.path) continue;
+      entries.set(entry.path, { mode: entry.mode, type: entry.type, sha: entry.sha });
+    }
+    cache.set(treeSha, entries);
+    return entries;
+  }
+
+  /**
+   * Existing regular files keep their mode. A missing path is a new file and uses 100644.
+   * Symlinks, directories, and submodules are rejected instead of being rewritten as blobs.
+   */
+  private async regularFileMode(
+    octokit: Octokit,
+    owner: string,
+    repo: string,
+    rootTreeSha: string,
+    path: string,
+    cache: Map<string, Map<string, TreeEntry>>,
+  ): Promise<"100644" | "100755"> {
+    const parts = path.split("/");
+    let treeSha = rootTreeSha;
+    for (let index = 0; index < parts.length; index += 1) {
+      const name = parts[index];
+      if (!name) throw new UnsupportedFileModeError(path, "unknown");
+      const listing = await this.listTree(octokit, owner, repo, treeSha, cache);
+      const entry = listing.get(name);
+      if (!entry) return "100644";
+      const last = index === parts.length - 1;
+      if (last) {
+        if (entry.mode === "100644" || entry.mode === "100755") return entry.mode;
+        throw new UnsupportedFileModeError(path, entry.mode ?? "unknown");
+      }
+      if (entry.type !== "tree" || !entry.sha) {
+        throw new UnsupportedFileModeError(path, entry.mode ?? "unknown");
+      }
+      treeSha = entry.sha;
+    }
+    return "100644";
   }
 
   private async branchHasContentHash(
