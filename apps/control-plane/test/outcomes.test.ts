@@ -5,7 +5,12 @@ import { FakeGitHub } from "../src/github/fake-github.js";
 import { silentLogger } from "../src/log.js";
 import type { PipelineDependencies } from "../src/pipeline.js";
 import type { TaskRecord, TaskStore } from "../src/store/types.js";
-import { ACCEPTED_MARKER, REJECTED_MARKER, branchName } from "../src/tasks/ids.js";
+import {
+  ACCEPTED_MARKER,
+  REJECTED_MARKER,
+  branchName,
+  triggerIdempotencyKey,
+} from "../src/tasks/ids.js";
 import { applyCheckSuite, applyPullRequestClosed, applyReview } from "../src/tasks/outcomes.js";
 import type { TaskStatus } from "../src/tasks/status.js";
 import { createTestStore, fixedClock } from "./helpers.js";
@@ -135,5 +140,47 @@ describe("task outcomes", () => {
     });
     expect(accepted.disposition).toBe("accepted");
     expect(accepted.task?.status).toBe("accepted");
+  });
+
+  it("retries a review requeue after a transient enqueue failure", async () => {
+    const requeue = await setup("ci_failed");
+    const runs = new Map<string, { id: string }>();
+    let calls = 0;
+    requeue.deps.enqueue = async (_task, options) => {
+      calls += 1;
+      if (calls === 1) throw new Error("queue unavailable");
+      const run = runs.get(options.idempotencyKey) ?? { id: "run_retried" };
+      runs.set(options.idempotencyKey, run);
+      return run;
+    };
+
+    await expect(
+      applyReview(requeue.deps, { repo, prNumber: 10, state: "changes_requested" }),
+    ).rejects.toThrow("queue unavailable");
+
+    const queued = await requeue.deps.store.getTask(requeue.task.id);
+    expect(queued?.status).toBe("queued");
+    expect(queued?.interventions).toBe(1);
+
+    const retried = await applyReview(requeue.deps, {
+      repo,
+      prNumber: 10,
+      state: "changes_requested",
+    });
+    expect(retried.disposition).toBe("requeued");
+    expect(calls).toBe(2);
+    expect(runs.size).toBe(1);
+    expect(
+      (await requeue.deps.store.listEvents(requeue.task.id)).filter(
+        (event) => event.type === "enqueued",
+      ),
+    ).toMatchObject([
+      {
+        payload: {
+          runId: "run_retried",
+          idempotencyKey: triggerIdempotencyKey(retried.task!),
+        },
+      },
+    ]);
   });
 });
