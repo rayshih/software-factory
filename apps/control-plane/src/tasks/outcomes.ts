@@ -1,6 +1,6 @@
 import type { PipelineDependencies } from "../pipeline.js";
 import type { TaskRecord } from "../store/types.js";
-import { ACCEPTED_MARKER, REJECTED_MARKER } from "./ids.js";
+import { ACCEPTED_MARKER, REJECTED_MARKER, triggerIdempotencyKey } from "./ids.js";
 import { canTransition, isTerminal } from "./status.js";
 import { transitionTask } from "./transition.js";
 
@@ -129,6 +129,18 @@ export async function applyReview(
   }
 
   if (state === "changes_requested") {
+    if (task.status === "queued" && task.reviewOutcome === "changes_requested") {
+      const idempotencyKey = triggerIdempotencyKey(task);
+      const events = await deps.store.listEvents(task.id);
+      const enqueueRecorded = events.some(
+        (event) => event.type === "enqueued" && event.payload.idempotencyKey === idempotencyKey,
+      );
+      if (!enqueueRecorded) {
+        await enqueueReviewRun(deps, task, idempotencyKey);
+        return { task, disposition: "requeued" };
+      }
+      return { task, disposition: "already_requeued" };
+    }
     if (!canTransition(task.status, "queued")) {
       await deps.store.appendEvent({
         taskId: task.id,
@@ -154,7 +166,7 @@ export async function applyReview(
         payload: { interventions: task.interventions + 1 },
       },
     );
-    await deps.enqueue(next);
+    await enqueueReviewRun(deps, next, triggerIdempotencyKey(next));
     return { task: next, disposition: "requeued" };
   }
 
@@ -166,6 +178,23 @@ export async function applyReview(
     createdAt: deps.clock.now(),
   });
   return { task, disposition: "review_noted" };
+}
+
+async function enqueueReviewRun(
+  deps: PipelineDependencies,
+  task: TaskRecord,
+  idempotencyKey: string,
+): Promise<void> {
+  // Submission and event persistence are not atomic. The stable key makes a
+  // retry safe if either the submission or recording its result is ambiguous.
+  const run = await deps.enqueue(task, { idempotencyKey });
+  await deps.store.appendEvent({
+    taskId: task.id,
+    type: "enqueued",
+    message: `Created review queue run ${run.id}`,
+    payload: { runId: run.id, idempotencyKey },
+    createdAt: deps.clock.now(),
+  });
 }
 
 export async function applyPullRequestClosed(
