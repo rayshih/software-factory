@@ -1,0 +1,25 @@
+name: Documentation
+
+on:
+  pull_request:
+    paths:
+      - "README.md"
+      - "PLAN.md"
+      - "SETUP.md"
+      - "content/**"
+      - "docs/**"
+      - "benchmarks/**"
+      - "metrics/**"
+      - ".github/workflows/documentation.yml"
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check diff whitespace
+        run: git diff --check "${{ github.event.pull_request.base.sha }}" "${{ github.sha }}"
