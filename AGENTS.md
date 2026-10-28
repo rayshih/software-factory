@@ -11,7 +11,7 @@
 
 - `apps/control-plane/`: TypeScript ESM control-plane foundation, with Drizzle/Postgres persistence, SQL migrations, and Vitest tests. The complete issue-to-PR pipeline is not implemented yet; package dependencies and scripts alone are not evidence of working integrations.
 - `docs/index.html` and `docs/zh-tw/index.html`: English and Traditional Chinese static landing pages. Keep product claims consistent across languages when changing them.
-- `benchmarks/`: benchmark issues. `metrics/`: cost and prospect tracking. `content/`: public updates.
+- `benchmarks/`: benchmark issues. `metrics/`: cost and prospect tracking. `content/`: public updates. `content/LESSONS.md` is the running log of experiment takeaways.
 - `PLAN.md` is the product roadmap, not yet a concrete PM execution plan. Do not infer authorization to implement the whole roadmap.
 - Integrate existing infrastructure, keep the agent runtime separate from the control plane, and preserve idempotency. Retries must not create duplicate tasks or PRs. An idle agent session is not proof of completion.
 - Preserve auditability of cost, human interventions, and failure causes. Keep work focused on the requested slice.
