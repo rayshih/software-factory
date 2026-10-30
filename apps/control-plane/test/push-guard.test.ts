@@ -97,6 +97,23 @@ describe("push guard", () => {
     expect(client.pushesCreated).toBe(0);
   });
 
+  it("rejects invalid issue numbers before writing", async () => {
+    const client = github();
+    for (const issueNumber of [0, -1, 1.5, Number.NaN, Number.POSITIVE_INFINITY]) {
+      await expect(
+        client.pushFiles({
+          installationId: 1,
+          repo,
+          branch: `factory/issue-${issueNumber}`,
+          issueNumber,
+          files: [{ path: "src/fix.ts", content: "ok\n" }],
+          allowedRepos: new Set([repo]),
+        }),
+      ).rejects.toBeInstanceOf(PushRejectedError);
+    }
+    expect(client.pushesCreated).toBe(0);
+  });
+
   it("rejects pushes over the file count and size limits", async () => {
     const client = github();
     await expect(

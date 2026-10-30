@@ -39,6 +39,9 @@ export function checkPush(input: {
     throw new PushRejectedError(`repository ${input.repo} is not allowlisted`);
   }
   if (input.requireFactoryBranch || input.allowedRepos) {
+    if (!Number.isSafeInteger(input.issueNumber) || input.issueNumber <= 0) {
+      throw new PushRejectedError(`invalid issue number: ${input.issueNumber}`);
+    }
     const expectedBranch = `factory/issue-${input.issueNumber}`;
     if (input.branch !== expectedBranch) {
       throw new PushRejectedError(
