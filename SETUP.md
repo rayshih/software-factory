@@ -37,6 +37,8 @@ No callback URL and no OAuth. The App does not use user authorization tokens. It
 
 The webhook is inactive. It will be turned on once the control plane is deployed, and it will use a webhook secret (stored as a deploy secret, not in this repo).
 
+The ordered account, database, worker, Render, and webhook steps are in the [environment setup sequence](apps/control-plane/README.md#environment-setup-sequence). The same subscriptions are also listed in the [deploy checklist](apps/control-plane/README.md#deploy-checklist).
+
 TODO, when that happens:
 
 - [ ] Enable the webhook
@@ -62,7 +64,7 @@ Contents and pull request write access would technically allow a merge through t
 - Bypass is limited to repository admins (the human)
 - Forgeline is not in the bypass list
 
-A GitHub App cannot approve its own pull request, so a human approval is always required. The control plane also has no merge code. Auto-merge is a non-goal.
+A GitHub App cannot approve its own pull request, so a human approval is always required. The control plane also has no merge code. The skeleton in [apps/control-plane](apps/control-plane/README.md) does not call the merge API. Auto-merge is a non-goal.
 
 ## Credentials
 
