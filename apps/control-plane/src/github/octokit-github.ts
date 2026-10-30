@@ -23,6 +23,7 @@ import { parseRepo } from "./repo.js";
 type InstallationAuth = ReturnType<typeof createAppAuth>;
 const issueCommentLocks = new Map<string, Promise<void>>();
 const OPEN_PULL_PAGE_SIZE = 100;
+const PULL_CREATE_RECONCILIATION_DELAYS_MS = [0, 100, 250, 500] as const;
 
 interface TreeEntry {
   mode?: string;
@@ -233,14 +234,16 @@ export class OctokitGitHub implements GitHubClient {
       });
       return { number: created.data.number, url: created.data.html_url, created: true };
     } catch (error) {
-      if (isHttpStatus(error, 422) || isHttpStatus(error, 409)) {
-        const raced = await this.findOpenPull(
-          octokit,
-          owner,
-          repo,
-          input.headBranch,
-          input.baseBranch,
-        );
+      if (shouldReconcilePullCreate(error)) {
+        const raced = isAmbiguousPullCreateFailure(error)
+          ? await this.reconcileAmbiguousPullCreate(
+              octokit,
+              owner,
+              repo,
+              input.headBranch,
+              input.baseBranch,
+            )
+          : await this.findOpenPull(octokit, owner, repo, input.headBranch, input.baseBranch);
         if (raced) return { number: raced.number, url: raced.url, created: false };
       }
       throw error;
@@ -394,6 +397,25 @@ export class OctokitGitHub implements GitHubClient {
     }
   }
 
+  private async reconcileAmbiguousPullCreate(
+    octokit: Octokit,
+    owner: string,
+    repo: string,
+    headBranch: string,
+    baseBranch: string,
+  ): Promise<{ number: number; url: string } | null> {
+    for (const delayMs of PULL_CREATE_RECONCILIATION_DELAYS_MS) {
+      if (delayMs > 0) await new Promise((resolve) => setTimeout(resolve, delayMs));
+      try {
+        const pull = await this.findOpenPull(octokit, owner, repo, headBranch, baseBranch);
+        if (pull) return pull;
+      } catch {
+        // Keep reconciling until the bounded window expires, then preserve the create error.
+      }
+    }
+    return null;
+  }
+
   private async listTree(
     octokit: Octokit,
     owner: string,
@@ -468,6 +490,22 @@ export class OctokitGitHub implements GitHubClient {
       return commits.data.map((commit) => ({ message: commit.commit.message }));
     });
   }
+}
+
+/** 422/409 means the pull may already exist. A timeout may mean create succeeded and the response was lost. */
+export function shouldReconcilePullCreate(error: unknown): boolean {
+  if (isHttpStatus(error, 422) || isHttpStatus(error, 409)) return true;
+  return isAmbiguousPullCreateFailure(error);
+}
+
+function isAmbiguousPullCreateFailure(error: unknown): boolean {
+  if (typeof error !== "object" || error === null) return false;
+  if ("name" in error && (error.name === "TimeoutError" || error.name === "AbortError"))
+    return true;
+  return (
+    "code" in error &&
+    (error.code === "ETIMEDOUT" || error.code === "ECONNRESET" || error.code === "ECONNABORTED")
+  );
 }
 
 export function createOctokitGitHub(config: { appId: string; privateKey: string }): GitHubClient {

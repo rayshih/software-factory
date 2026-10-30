@@ -395,6 +395,157 @@ describe("OctokitGitHub open pull lookup", () => {
       created: false,
     });
   });
+
+  it("reuses the open pull request when create times out after it was created", async () => {
+    const timeout = Object.assign(new Error("timed out"), { name: "TimeoutError" });
+    let created = false;
+    const pullsUpdate = vi.fn();
+    const github = githubFor({
+      pulls: {
+        list: vi.fn(async () => ({
+          data: created ? [pull("main", 11)] : [],
+        })),
+        create: vi.fn(async () => {
+          created = true;
+          throw timeout;
+        }),
+        update: pullsUpdate,
+      },
+    });
+
+    await expect(
+      github.openPullRequest({
+        installationId: 1,
+        repo,
+        headBranch: branch,
+        baseBranch: "main",
+        title: "Fix",
+        body: "body",
+      }),
+    ).resolves.toEqual({
+      number: 11,
+      url: `https://github.com/${repo}/pull/11`,
+      created: false,
+    });
+    expect(pullsUpdate).not.toHaveBeenCalled();
+  });
+
+  it("retries reconciliation when a timed-out create is not immediately visible", async () => {
+    const timeout = Object.assign(new Error("timed out"), { name: "TimeoutError" });
+    let listCalls = 0;
+    const pullsList = vi.fn(async () => {
+      listCalls += 1;
+      return { data: listCalls >= 3 ? [pull("main", 12)] : [] };
+    });
+    const github = githubFor({
+      pulls: {
+        list: pullsList,
+        create: vi.fn(async () => {
+          throw timeout;
+        }),
+        update: vi.fn(),
+      },
+    });
+
+    await expect(
+      github.openPullRequest({
+        installationId: 1,
+        repo,
+        headBranch: branch,
+        baseBranch: "main",
+        title: "Fix",
+        body: "body",
+      }),
+    ).resolves.toEqual({
+      number: 12,
+      url: `https://github.com/${repo}/pull/12`,
+      created: false,
+    });
+    expect(pullsList).toHaveBeenCalledTimes(3);
+  });
+
+  it("rethrows the original timeout after bounded reconciliation attempts", async () => {
+    const timeout = Object.assign(new Error("timed out"), { code: "ETIMEDOUT" });
+    const pullsList = vi.fn(async () => ({ data: [] }));
+    const github = githubFor({
+      pulls: {
+        list: pullsList,
+        create: vi.fn(async () => {
+          throw timeout;
+        }),
+        update: vi.fn(),
+      },
+    });
+
+    await expect(
+      github.openPullRequest({
+        installationId: 1,
+        repo,
+        headBranch: branch,
+        baseBranch: "main",
+        title: "Fix",
+        body: "body",
+      }),
+    ).rejects.toBe(timeout);
+    expect(pullsList).toHaveBeenCalledTimes(5);
+  });
+
+  it("does not reuse a pull request whose base does not match", async () => {
+    const conflict = Object.assign(new Error("already exists"), { status: 422 });
+    const pullsUpdate = vi.fn();
+    const github = githubFor({
+      pulls: {
+        list: vi.fn(async () => ({ data: [pull("release", 4)] })),
+        create: vi.fn(async () => {
+          throw conflict;
+        }),
+        update: pullsUpdate,
+      },
+    });
+
+    await expect(
+      github.openPullRequest({
+        installationId: 1,
+        repo,
+        headBranch: branch,
+        baseBranch: "main",
+        title: "Fix",
+        body: "body",
+      }),
+    ).rejects.toBe(conflict);
+    expect(pullsUpdate).not.toHaveBeenCalled();
+  });
+
+  it("does not reopen a closed pull request", async () => {
+    const conflict = Object.assign(new Error("already exists"), { status: 422 });
+    const pullsUpdate = vi.fn();
+    const pullsList = vi.fn(async ({ state }: { state: string }) => {
+      expect(state).toBe("open");
+      return { data: [] };
+    });
+    const github = githubFor({
+      pulls: {
+        list: pullsList,
+        create: vi.fn(async () => {
+          throw conflict;
+        }),
+        update: pullsUpdate,
+      },
+    });
+
+    await expect(
+      github.openPullRequest({
+        installationId: 1,
+        repo,
+        headBranch: branch,
+        baseBranch: "main",
+        title: "Fix",
+        body: "body",
+      }),
+    ).rejects.toBe(conflict);
+    expect(pullsUpdate).not.toHaveBeenCalled();
+    expect(pullsList).toHaveBeenCalled();
+  });
 });
 
 describe("OctokitGitHub issue comments", () => {
