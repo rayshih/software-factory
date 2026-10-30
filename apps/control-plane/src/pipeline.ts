@@ -14,6 +14,10 @@ export interface PipelineDependencies {
   baseBranch: string;
   clock: Clock;
   logger: Logger;
+  /** How long a run owns the task before another worker may take it. Default 60s. */
+  leaseDurationMs?: number;
+  /** How often the owner extends the lease while the agent runs. Default 20s. */
+  leaseRenewIntervalMs?: number;
 }
 
 export interface WebhookDependencies extends PipelineDependencies {
