@@ -1,6 +1,7 @@
 import { createAppAuth } from "@octokit/auth-app";
 import { Octokit } from "@octokit/rest";
 import { commitMessage, operationHash, type FileChange } from "./content-hash.js";
+import { SENSITIVE_PATH_LABEL, checkPush, sensitivePullNote } from "./push-guard.js";
 import type {
   BranchComparison,
   BranchRef,
@@ -69,6 +70,21 @@ export class OctokitGitHub implements GitHubClient {
     this.auth = createAppAuth({ appId, privateKey });
   }
 
+  async downloadRepositoryArchive(input: {
+    installationId: number;
+    repo: string;
+    ref: string;
+  }): Promise<string> {
+    const octokit = await this.octokit(input.installationId);
+    const { owner, repo } = parseRepo(input.repo);
+    const response = await octokit.rest.repos.downloadTarballArchive({
+      owner,
+      repo,
+      ref: input.ref,
+    });
+    return toBase64(response.data);
+  }
+
   async getInstallationToken(installationId: number): Promise<string> {
     const authentication = await this.auth({ type: "installation", installationId });
     return authentication.token;
@@ -110,14 +126,26 @@ export class OctokitGitHub implements GitHubClient {
     branch: string;
     issueNumber: number;
     files: readonly FileChange[];
+    allowedRepos?: ReadonlySet<string>;
+    limits?: { maxFiles?: number; maxFileBytes?: number; maxTotalBytes?: number };
   }): Promise<PushResult> {
+    const guard = checkPush({
+      repo: input.repo,
+      branch: input.branch,
+      files: input.files,
+      allowedRepos: input.allowedRepos,
+      limits: input.limits,
+      requireFactoryBranch: true,
+    });
+    const sensitive =
+      guard.sensitivePaths.length > 0 ? { sensitivePaths: guard.sensitivePaths } : {};
     const octokit = await this.octokit(input.installationId);
     const { owner, repo } = parseRepo(input.repo);
     const parentSha = await this.readRef(octokit, owner, repo, input.branch);
     if (!parentSha) throw new Error(`branch ${input.branch} does not exist on ${input.repo}`);
     const hash = operationHash(input.branch, input.issueNumber, input.files);
     if (await this.branchHasContentHash(octokit, owner, repo, input.branch, parentSha, hash)) {
-      return { sha: parentSha, created: false };
+      return { sha: parentSha, created: false, ...sensitive };
     }
     const parent = await octokit.rest.git.getCommit({ owner, repo, commit_sha: parentSha });
     const treeCache = new Map<string, Map<string, TreeEntry>>();
@@ -158,7 +186,7 @@ export class OctokitGitHub implements GitHubClient {
         sha: commit.data.sha,
         force: false,
       });
-      return { sha: commit.data.sha, created: true };
+      return { sha: commit.data.sha, created: true, ...sensitive };
     } catch (error) {
       if (isHttpStatus(error, 422) || isHttpStatus(error, 409)) {
         const head = await this.readRef(octokit, owner, repo, input.branch);
@@ -209,9 +237,14 @@ export class OctokitGitHub implements GitHubClient {
     baseBranch: string;
     title: string;
     body: string;
+    sensitivePaths?: readonly string[];
   }): Promise<PullRequestRef> {
     const octokit = await this.octokit(input.installationId);
     const { owner, repo } = parseRepo(input.repo);
+    const body =
+      input.sensitivePaths && input.sensitivePaths.length > 0
+        ? `${input.body}\n\n${sensitivePullNote(input.sensitivePaths)}`
+        : input.body;
     const existing = await this.findOpenPull(
       octokit,
       owner,
@@ -220,6 +253,7 @@ export class OctokitGitHub implements GitHubClient {
       input.baseBranch,
     );
     if (existing) {
+      await this.flagSensitivePaths(octokit, owner, repo, existing.number, input.sensitivePaths);
       return { number: existing.number, url: existing.url, created: false };
     }
     try {
@@ -227,10 +261,17 @@ export class OctokitGitHub implements GitHubClient {
         owner,
         repo,
         title: input.title,
-        body: input.body,
+        body,
         head: input.headBranch,
         base: input.baseBranch,
       });
+      await this.flagSensitivePaths(
+        octokit,
+        owner,
+        repo,
+        created.data.number,
+        input.sensitivePaths,
+      );
       return { number: created.data.number, url: created.data.html_url, created: true };
     } catch (error) {
       if (isHttpStatus(error, 422) || isHttpStatus(error, 409)) {
@@ -365,6 +406,22 @@ export class OctokitGitHub implements GitHubClient {
     }
   }
 
+  private async flagSensitivePaths(
+    octokit: Octokit,
+    owner: string,
+    repo: string,
+    pullNumber: number,
+    paths: readonly string[] | undefined,
+  ): Promise<void> {
+    if (!paths || paths.length === 0) return;
+    await octokit.rest.issues.addLabels({
+      owner,
+      repo,
+      issue_number: pullNumber,
+      labels: [SENSITIVE_PATH_LABEL],
+    });
+  }
+
   private async findOpenPull(
     octokit: Octokit,
     owner: string,
@@ -468,6 +525,14 @@ export class OctokitGitHub implements GitHubClient {
       return commits.data.map((commit) => ({ message: commit.commit.message }));
     });
   }
+}
+
+function toBase64(data: unknown): string {
+  if (typeof data === "string") return Buffer.from(data).toString("base64");
+  if (Buffer.isBuffer(data)) return data.toString("base64");
+  if (data instanceof ArrayBuffer) return Buffer.from(data).toString("base64");
+  if (data instanceof Uint8Array) return Buffer.from(data).toString("base64");
+  throw new Error("GitHub archive response was not bytes");
 }
 
 export function createOctokitGitHub(config: { appId: string; privateKey: string }): GitHubClient {

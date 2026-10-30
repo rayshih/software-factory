@@ -62,7 +62,7 @@ const request: AgentRunRequest = {
   branch: "factory/issue-1",
   baseBranch: "main",
   attempt: 1,
-  installationToken: "ghs_test",
+  archiveBase64: Buffer.from("archive").toString("base64"),
 };
 
 function walk(directory: string): string[] {

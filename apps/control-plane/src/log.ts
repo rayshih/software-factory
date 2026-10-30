@@ -36,6 +36,32 @@ function isPlainObject(value: object): value is Record<string, unknown> {
   return proto === Object.prototype || proto === null;
 }
 
+const TOKEN_PATTERNS = [
+  /\b(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9_]+/g,
+  /\bgithub_pat_[A-Za-z0-9_]+/g,
+  /\bsk-ant-[A-Za-z0-9_-]+/g,
+  /-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----/g,
+  /\bBearer\s+\S+/g,
+];
+
+/** Removes credential material from free text such as errors and agent summaries. */
+export function redactText(value: string): string {
+  let redacted = value;
+  for (const pattern of TOKEN_PATTERNS) {
+    redacted = redacted.replace(pattern, "[redacted]");
+  }
+  return redacted;
+}
+
+export function redactUnknown(value: unknown): unknown {
+  if (typeof value === "string") return redactText(value);
+  if (Array.isArray(value)) return value.map((item) => redactUnknown(item));
+  if (typeof value === "object" && value !== null && isPlainObject(value)) {
+    return sanitizeObject(value, new WeakSet());
+  }
+  return value;
+}
+
 function sanitizeValue(value: unknown, seen: WeakSet<object>): unknown {
   if (Array.isArray(value)) {
     if (seen.has(value)) return REDACTED;
@@ -47,6 +73,7 @@ function sanitizeValue(value: unknown, seen: WeakSet<object>): unknown {
     seen.add(value);
     return sanitizeObject(value, seen);
   }
+  if (typeof value === "string") return redactText(value);
   return value;
 }
 
@@ -70,10 +97,14 @@ export function sanitizeFields(
 
 export const consoleLogger: Logger = {
   info(message, fields) {
-    console.log(JSON.stringify({ level: "info", message, ...sanitizeFields(fields) }));
+    console.log(
+      JSON.stringify({ level: "info", message: redactText(message), ...sanitizeFields(fields) }),
+    );
   },
   error(message, fields) {
-    console.error(JSON.stringify({ level: "error", message, ...sanitizeFields(fields) }));
+    console.error(
+      JSON.stringify({ level: "error", message: redactText(message), ...sanitizeFields(fields) }),
+    );
   },
 };
 
