@@ -2,6 +2,8 @@ import { randomUUID } from "node:crypto";
 import type { AgentRunResult } from "../agent/types.js";
 import type { PipelineDependencies } from "../pipeline.js";
 import { LeaseHeldError, StaleRunError, type TaskRecord } from "../store/types.js";
+import { checkPush } from "../github/push-guard.js";
+import { redactText } from "../log.js";
 import { PR_LINK_MARKER } from "./ids.js";
 import { transitionTask } from "./transition.js";
 
@@ -95,7 +97,11 @@ export async function executeRunIssue(
       baseBranch: deps.baseBranch,
     });
 
-    const token = await deps.github.getInstallationToken(task.installationId);
+    const archiveBase64 = await deps.github.downloadRepositoryArchive({
+      installationId: task.installationId,
+      repo: task.repo,
+      ref: task.branch,
+    });
     const result = await deps.agent.run({
       taskId: task.id,
       repo: task.repo,
@@ -105,7 +111,7 @@ export async function executeRunIssue(
       branch: task.branch,
       baseBranch: deps.baseBranch,
       attempt: task.attempts,
-      installationToken: token,
+      archiveBase64,
     });
     if (lostLease) throw new StaleRunError(task.id, runId);
 
@@ -123,7 +129,7 @@ export async function executeRunIssue(
     await deps.store.appendEvent({
       taskId: task.id,
       type: "agent_finished",
-      message: result.summary,
+      message: redactText(result.summary),
       payload: {
         sessionStatus: result.sessionStatus,
         costUsd: result.costUsd,
@@ -135,6 +141,16 @@ export async function executeRunIssue(
     });
 
     await requireRun(deps, task.id, runId);
+    const guard =
+      result.files.length > 0
+        ? checkPush({
+            repo: task.repo,
+            branch: task.branch,
+            files: result.files,
+            allowedRepos: deps.allowedRepos,
+            requireFactoryBranch: true,
+          })
+        : { sensitivePaths: [] as string[] };
     if (result.files.length > 0) {
       await deps.github.pushFiles({
         installationId: task.installationId,
@@ -142,6 +158,7 @@ export async function executeRunIssue(
         branch: task.branch,
         issueNumber: task.issueNumber,
         files: result.files,
+        allowedRepos: deps.allowedRepos,
       });
     }
 
@@ -153,7 +170,7 @@ export async function executeRunIssue(
       head: task.branch,
     });
     if (comparison.aheadBy > 0) {
-      return recordPullRequest(deps, task, result.summary, runId);
+      return recordPullRequest(deps, task, redactText(result.summary), runId, guard.sensitivePaths);
     }
 
     const failure = failureForEmptySession(result);
@@ -190,6 +207,7 @@ async function recordPullRequest(
   task: TaskRecord,
   summary: string,
   runId?: string,
+  sensitivePaths: readonly string[] = [],
 ): Promise<TaskRecord> {
   const title = `[factory] ${task.issueTitle} (#${task.issueNumber})`.slice(0, 240);
   const body = [
@@ -208,6 +226,7 @@ async function recordPullRequest(
     baseBranch: deps.baseBranch,
     title,
     body,
+    sensitivePaths,
   });
 
   if (runId) await requireRun(deps, task.id, runId);

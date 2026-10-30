@@ -8,6 +8,8 @@ export interface BranchRef {
 export interface PushResult {
   sha: string;
   created: boolean;
+  /** Present when the push is allowed but touches paths a reviewer should notice. */
+  sensitivePaths?: readonly string[];
 }
 
 export interface BranchComparison {
@@ -43,6 +45,16 @@ export interface IssueCommentResult {
 export interface GitHubClient {
   getInstallationToken(installationId: number): Promise<string>;
 
+  /**
+   * Repository snapshot for the agent. The control plane fetches it.
+   * The agent never receives an installation token.
+   */
+  downloadRepositoryArchive(input: {
+    installationId: number;
+    repo: string;
+    ref: string;
+  }): Promise<string>;
+
   ensureBranch(input: {
     installationId: number;
     repo: string;
@@ -56,6 +68,8 @@ export interface GitHubClient {
     branch: string;
     issueNumber: number;
     files: readonly FileChange[];
+    allowedRepos?: ReadonlySet<string>;
+    limits?: { maxFiles?: number; maxFileBytes?: number; maxTotalBytes?: number };
   }): Promise<PushResult>;
 
   compare(input: {
@@ -72,6 +86,7 @@ export interface GitHubClient {
     baseBranch: string;
     title: string;
     body: string;
+    sensitivePaths?: readonly string[];
   }): Promise<PullRequestRef>;
 
   commentOnIssue(input: {

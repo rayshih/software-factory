@@ -16,7 +16,8 @@ export interface AgentRunRequest {
   branch: string;
   baseBranch: string;
   attempt: number;
-  installationToken: string;
+  /** Base64 gzip tarball of the branch, fetched by the control plane. */
+  archiveBase64: string;
 }
 
 export interface AgentRunResult {
