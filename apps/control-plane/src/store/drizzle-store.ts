@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { and, desc, eq, inArray, max, or, sql } from "drizzle-orm";
+import { redactText, redactUnknown } from "../log.js";
 import { formatUsd } from "../money.js";
 import { idempotencyKey } from "../tasks/ids.js";
 import { ACTIVE_STATUSES, type TaskStatus } from "../tasks/status.js";
@@ -140,8 +141,8 @@ export function createTaskStore(db: AppDatabase): TaskStore {
           id: randomUUID(),
           taskId: input.taskId,
           type: input.type,
-          message: input.message,
-          payload: input.payload ?? {},
+          message: redactText(input.message),
+          payload: (redactUnknown(input.payload ?? {}) ?? {}) as Record<string, unknown>,
           createdAt: input.createdAt ?? new Date(),
         })
         .returning();

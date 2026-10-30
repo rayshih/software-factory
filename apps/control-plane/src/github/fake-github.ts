@@ -1,4 +1,5 @@
 import { operationHash, type FileChange } from "./content-hash.js";
+import { SENSITIVE_PATH_LABEL, checkPush, sensitivePullNote } from "./push-guard.js";
 import type {
   BranchComparison,
   GitHubClient,
@@ -28,6 +29,7 @@ interface PullState {
   body: string;
   state: "open" | "closed";
   merged: boolean;
+  labels: string[];
 }
 
 interface CommentState {
@@ -112,6 +114,7 @@ export class FakeGitHub implements GitHubClient {
       baseBranch,
       title: "existing",
       body: "existing",
+      labels: [],
       state: "open",
       merged: false,
     };
@@ -160,14 +163,28 @@ export class FakeGitHub implements GitHubClient {
     branch: string;
     issueNumber: number;
     files: readonly FileChange[];
+    allowedRepos?: ReadonlySet<string>;
+    limits?: { maxFiles?: number; maxFileBytes?: number; maxTotalBytes?: number };
   }): Promise<PushResult> {
+    const guard = checkPush({
+      repo: input.repo,
+      branch: input.branch,
+      issueNumber: input.issueNumber,
+      files: input.files,
+      allowedRepos: input.allowedRepos,
+      limits: input.limits,
+    });
     this.pushCalls += 1;
     const repo = this.repo(input.repo);
     const branch = repo.branches.get(input.branch);
     if (!branch) throw new Error(`branch ${input.branch} does not exist`);
     const hash = operationHash(input.branch, input.issueNumber, input.files);
     if (this.historyHasHash(repo, branch.sha, hash)) {
-      return { sha: branch.sha, created: false };
+      return {
+        sha: branch.sha,
+        created: false,
+        sensitivePaths: guard.sensitivePaths,
+      };
     }
     const sha = `commit-${repo.nextCommit++}`;
     repo.commits.set(sha, {
@@ -178,7 +195,11 @@ export class FakeGitHub implements GitHubClient {
     });
     branch.sha = sha;
     this.pushesCreated += 1;
-    return { sha, created: true };
+    return {
+      sha,
+      created: true,
+      sensitivePaths: guard.sensitivePaths,
+    };
   }
 
   async compare(input: {
@@ -218,6 +239,7 @@ export class FakeGitHub implements GitHubClient {
     baseBranch: string;
     title: string;
     body: string;
+    sensitivePaths: readonly string[];
   }): Promise<PullRequestRef> {
     this.openPullRequestCalls += 1;
     const repo = this.repo(input.repo);
@@ -227,7 +249,12 @@ export class FakeGitHub implements GitHubClient {
         pull.headBranch === input.headBranch &&
         pull.baseBranch === input.baseBranch,
     );
+    const body = withSensitiveNote(input.body, input.sensitivePaths);
     if (existing) {
+      addSensitiveLabel(existing, input.sensitivePaths);
+      if (input.sensitivePaths && input.sensitivePaths.length > 0 && body !== existing.body) {
+        existing.body = body;
+      }
       return { number: existing.number, url: existing.url, created: false };
     }
     const comparison = await this.compare({
@@ -246,10 +273,12 @@ export class FakeGitHub implements GitHubClient {
       headBranch: input.headBranch,
       baseBranch: input.baseBranch,
       title: input.title,
-      body: input.body,
+      body,
+      labels: [],
       state: "open",
       merged: false,
     };
+    addSensitiveLabel(pull, input.sensitivePaths);
     repo.pulls.push(pull);
     this.pullsCreated.push(pull);
     return { number, url: pull.url, created: true };
@@ -306,4 +335,15 @@ export class FakeGitHub implements GitHubClient {
       (commitSha) => repo.commits.get(commitSha)?.contentHashes.has(hash) ?? false,
     );
   }
+}
+
+function withSensitiveNote(body: string, paths: readonly string[] | undefined): string {
+  if (!paths || paths.length === 0) return body;
+  const note = sensitivePullNote(paths);
+  return body.includes(note) ? body : `${body}\n\n${note}`;
+}
+
+function addSensitiveLabel(pull: PullState, paths: readonly string[] | undefined): void {
+  if (!paths || paths.length === 0) return;
+  if (!pull.labels.includes(SENSITIVE_PATH_LABEL)) pull.labels.push(SENSITIVE_PATH_LABEL);
 }

@@ -8,6 +8,7 @@ import {
 import { CommitHistoryLookupLimitError } from "../src/github/commit-history.js";
 import { operationMarker } from "../src/github/issue-comment.js";
 import { OctokitGitHub, UnsupportedFileModeError } from "../src/github/octokit-github.js";
+import { PushRejectedError } from "../src/github/push-guard.js";
 
 const repo = "rayshih/sf-demo-todo-api";
 const files = [{ path: "src/fix.ts", content: "export const fixed = true;\n" }];
@@ -74,7 +75,7 @@ describe("OctokitGitHub push history", () => {
 
     await expect(
       github.pushFiles({ installationId: 1, repo, branch, issueNumber: 7, files }),
-    ).resolves.toEqual({ sha: "tip", created: false });
+    ).resolves.toEqual({ sha: "tip", created: false, sensitivePaths: [] });
     expect(createCommit).not.toHaveBeenCalled();
   });
 
@@ -96,7 +97,7 @@ describe("OctokitGitHub push history", () => {
 
     await expect(
       github.pushFiles({ installationId: 1, repo, branch, issueNumber: 7, files }),
-    ).resolves.toEqual({ sha: "new-sha", created: true });
+    ).resolves.toEqual({ sha: "new-sha", created: true, sensitivePaths: [] });
     expect(updateRef).toHaveBeenCalledWith(
       expect.objectContaining({ sha: "new-sha", force: false, ref: `heads/${branch}` }),
     );
@@ -133,7 +134,7 @@ describe("OctokitGitHub push history", () => {
 
     await expect(
       github.pushFiles({ installationId: 1, repo, branch, issueNumber: 7, files }),
-    ).resolves.toEqual({ sha: captured, created: false });
+    ).resolves.toEqual({ sha: captured, created: false, sensitivePaths: [] });
     expect(listCommits).toHaveBeenCalledWith(expect.objectContaining({ sha: captured, page: 1 }));
     expect(listCommits).toHaveBeenCalledWith(expect.objectContaining({ sha: captured, page: 2 }));
     expect(createCommit).not.toHaveBeenCalled();
@@ -193,6 +194,77 @@ describe("OctokitGitHub push history", () => {
       }),
     ).rejects.toBeInstanceOf(DuplicateFilePathError);
     expect(createCommit).not.toHaveBeenCalled();
+  });
+
+  it("rejects a secret file before contacting GitHub", async () => {
+    const getRef = vi.fn();
+    const github = githubFor({ git: { getRef } });
+    await expect(
+      github.pushFiles({
+        installationId: 1,
+        repo,
+        branch,
+        issueNumber: 7,
+        files: [{ path: ".env", content: "TOKEN=ghs_secret\n" }],
+      }),
+    ).rejects.toBeInstanceOf(PushRejectedError);
+    expect(getRef).not.toHaveBeenCalled();
+  });
+
+  it("rejects a branch for a different issue before contacting GitHub", async () => {
+    const getRef = vi.fn();
+    const github = githubFor({ git: { getRef } });
+    await expect(
+      github.pushFiles({
+        installationId: 1,
+        repo,
+        branch: "factory/issue-8",
+        issueNumber: 7,
+        files,
+      }),
+    ).rejects.toBeInstanceOf(PushRejectedError);
+    expect(getRef).not.toHaveBeenCalled();
+  });
+
+  it("rejects invalid issue numbers before contacting GitHub", async () => {
+    const getRef = vi.fn();
+    const github = githubFor({ git: { getRef } });
+    for (const issueNumber of [0, -1, 1.5, Number.NaN, Number.POSITIVE_INFINITY]) {
+      await expect(
+        github.pushFiles({
+          installationId: 1,
+          repo,
+          branch: `factory/issue-${issueNumber}`,
+          issueNumber,
+          files,
+        }),
+      ).rejects.toBeInstanceOf(PushRejectedError);
+    }
+    expect(getRef).not.toHaveBeenCalled();
+  });
+
+  it("rejects invalid push limits before contacting GitHub", async () => {
+    const getRef = vi.fn();
+    const github = githubFor({ git: { getRef } });
+    const invalidLimits = [
+      { maxFiles: Number.NaN },
+      { maxFileBytes: Number.POSITIVE_INFINITY },
+      { maxTotalBytes: -1 },
+      { maxFiles: 1.5 },
+    ];
+    for (const limits of invalidLimits) {
+      await expect(
+        github.pushFiles({
+          installationId: 1,
+          repo,
+          branch,
+          issueNumber: 7,
+          files,
+          limits,
+        }),
+      ).rejects.toBeInstanceOf(PushRejectedError);
+    }
+    expect(getRef).not.toHaveBeenCalled();
   });
 
   it("keeps mode 100755 when editing an executable file", async () => {
@@ -319,6 +391,7 @@ describe("OctokitGitHub open pull lookup", () => {
       html_url: `https://github.com/${repo}/pull/${number}`,
       head: { ref: branch, repo: { full_name: repo } },
       base: { ref: base },
+      body: "body",
     };
   }
 
@@ -346,6 +419,7 @@ describe("OctokitGitHub open pull lookup", () => {
         baseBranch: "release",
         title: "Fix",
         body: "body",
+        sensitivePaths: [],
       }),
     ).resolves.toEqual({
       number: 240,
@@ -355,6 +429,99 @@ describe("OctokitGitHub open pull lookup", () => {
     expect(pullsCreate).not.toHaveBeenCalled();
     expect(pullsUpdate).not.toHaveBeenCalled();
     expect(pullsList).toHaveBeenCalledTimes(2);
+  });
+
+  it("adds the sensitive-path note and label to an existing pull request", async () => {
+    const pullsUpdate = vi.fn(async () => ({}));
+    const addLabels = vi.fn(async () => ({}));
+    const github = githubFor({
+      pulls: {
+        list: vi.fn(async () => ({ data: [pull("main", 12)] })),
+        create: vi.fn(),
+        update: pullsUpdate,
+      },
+      issues: { addLabels },
+    });
+
+    await github.openPullRequest({
+      installationId: 1,
+      repo,
+      headBranch: branch,
+      baseBranch: "main",
+      title: "Fix",
+      body: "new body",
+      sensitivePaths: [".github/workflows/ci.yml"],
+    });
+
+    expect(pullsUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        pull_number: 12,
+        body: expect.stringContaining(".github/workflows/ci.yml"),
+      }),
+    );
+    expect(addLabels).toHaveBeenCalledWith(
+      expect.objectContaining({ issue_number: 12, labels: ["touches-sensitive-paths"] }),
+    );
+  });
+
+  it("creates a missing sensitive-path label and retries applying it", async () => {
+    const missing = Object.assign(new Error("label does not exist"), { status: 404 });
+    const addLabels = vi.fn().mockRejectedValueOnce(missing).mockResolvedValueOnce({});
+    const createLabel = vi.fn(async () => ({}));
+    const github = githubFor({
+      pulls: {
+        list: vi.fn(async () => ({ data: [pull("main", 12)] })),
+        create: vi.fn(),
+        update: vi.fn(async () => ({})),
+      },
+      issues: { addLabels, createLabel },
+    });
+
+    await github.openPullRequest({
+      installationId: 1,
+      repo,
+      headBranch: branch,
+      baseBranch: "main",
+      title: "Fix",
+      body: "body",
+      sensitivePaths: [".github/workflows/ci.yml"],
+    });
+
+    expect(createLabel).toHaveBeenCalledWith(
+      expect.objectContaining({ name: "touches-sensitive-paths" }),
+    );
+    expect(addLabels).toHaveBeenCalledTimes(2);
+  });
+
+  it("retries applying a sensitive-path label after another worker creates it", async () => {
+    const missing = Object.assign(new Error("label does not exist"), { status: 404 });
+    const alreadyExists = Object.assign(new Error("label already exists"), { status: 422 });
+    const addLabels = vi.fn().mockRejectedValueOnce(missing).mockResolvedValueOnce({});
+    const github = githubFor({
+      pulls: {
+        list: vi.fn(async () => ({ data: [pull("main", 12)] })),
+        create: vi.fn(),
+        update: vi.fn(async () => ({})),
+      },
+      issues: { addLabels, createLabel: vi.fn(async () => Promise.reject(alreadyExists)) },
+    });
+
+    await expect(
+      github.openPullRequest({
+        installationId: 1,
+        repo,
+        headBranch: branch,
+        baseBranch: "main",
+        title: "Fix",
+        body: "body",
+        sensitivePaths: [".github/workflows/ci.yml"],
+      }),
+    ).resolves.toEqual({
+      number: 12,
+      url: `https://github.com/${repo}/pull/12`,
+      created: false,
+    });
+    expect(addLabels).toHaveBeenCalledTimes(2);
   });
 
   it("recovers a conflicting create by paginating to the existing pull request", async () => {
@@ -388,6 +555,7 @@ describe("OctokitGitHub open pull lookup", () => {
         baseBranch: "main",
         title: "Fix",
         body: "body",
+        sensitivePaths: [],
       }),
     ).resolves.toEqual({
       number: 9,
