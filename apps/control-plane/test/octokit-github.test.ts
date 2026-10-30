@@ -430,6 +430,66 @@ describe("OctokitGitHub open pull lookup", () => {
     expect(pullsUpdate).not.toHaveBeenCalled();
   });
 
+  it("retries reconciliation when a timed-out create is not immediately visible", async () => {
+    const timeout = Object.assign(new Error("timed out"), { name: "TimeoutError" });
+    let listCalls = 0;
+    const pullsList = vi.fn(async () => {
+      listCalls += 1;
+      return { data: listCalls >= 3 ? [pull("main", 12)] : [] };
+    });
+    const github = githubFor({
+      pulls: {
+        list: pullsList,
+        create: vi.fn(async () => {
+          throw timeout;
+        }),
+        update: vi.fn(),
+      },
+    });
+
+    await expect(
+      github.openPullRequest({
+        installationId: 1,
+        repo,
+        headBranch: branch,
+        baseBranch: "main",
+        title: "Fix",
+        body: "body",
+      }),
+    ).resolves.toEqual({
+      number: 12,
+      url: `https://github.com/${repo}/pull/12`,
+      created: false,
+    });
+    expect(pullsList).toHaveBeenCalledTimes(3);
+  });
+
+  it("rethrows the original timeout after bounded reconciliation attempts", async () => {
+    const timeout = Object.assign(new Error("timed out"), { code: "ETIMEDOUT" });
+    const pullsList = vi.fn(async () => ({ data: [] }));
+    const github = githubFor({
+      pulls: {
+        list: pullsList,
+        create: vi.fn(async () => {
+          throw timeout;
+        }),
+        update: vi.fn(),
+      },
+    });
+
+    await expect(
+      github.openPullRequest({
+        installationId: 1,
+        repo,
+        headBranch: branch,
+        baseBranch: "main",
+        title: "Fix",
+        body: "body",
+      }),
+    ).rejects.toBe(timeout);
+    expect(pullsList).toHaveBeenCalledTimes(5);
+  });
+
   it("does not reuse a pull request whose base does not match", async () => {
     const conflict = Object.assign(new Error("already exists"), { status: 422 });
     const pullsUpdate = vi.fn();
