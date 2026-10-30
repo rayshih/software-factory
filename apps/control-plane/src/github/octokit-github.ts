@@ -233,7 +233,7 @@ export class OctokitGitHub implements GitHubClient {
       });
       return { number: created.data.number, url: created.data.html_url, created: true };
     } catch (error) {
-      if (isHttpStatus(error, 422) || isHttpStatus(error, 409)) {
+      if (shouldReconcilePullCreate(error)) {
         const raced = await this.findOpenPull(
           octokit,
           owner,
@@ -468,6 +468,18 @@ export class OctokitGitHub implements GitHubClient {
       return commits.data.map((commit) => ({ message: commit.commit.message }));
     });
   }
+}
+
+/** 422/409 means the pull may already exist. A timeout may mean create succeeded and the response was lost. */
+export function shouldReconcilePullCreate(error: unknown): boolean {
+  if (isHttpStatus(error, 422) || isHttpStatus(error, 409)) return true;
+  if (typeof error !== "object" || error === null) return false;
+  if ("name" in error && (error.name === "TimeoutError" || error.name === "AbortError"))
+    return true;
+  return (
+    "code" in error &&
+    (error.code === "ETIMEDOUT" || error.code === "ECONNRESET" || error.code === "ECONNABORTED")
+  );
 }
 
 export function createOctokitGitHub(config: { appId: string; privateKey: string }): GitHubClient {
