@@ -122,7 +122,7 @@ function baseName(path: string): string {
 }
 
 function isSecretPath(path: string): boolean {
-  const base = baseName(path);
+  const base = baseName(path).toLowerCase();
   if (base === ".env" || base.startsWith(".env.")) return true;
   if (/\.(pem|key|p12|pfx)$/i.test(base)) return true;
   return base === "id_rsa" || base === "id_ed25519" || base === "credentials.json";

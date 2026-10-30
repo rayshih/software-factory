@@ -47,6 +47,10 @@ describe("push guard", () => {
       "src\\fix.ts",
       "src//fix.ts",
       ".env",
+      ".ENV",
+      ".Env.production",
+      "keys/ID_RSA",
+      "config/Credentials.json",
       "keys/deploy.pem",
     ];
     for (const path of blocked) {
