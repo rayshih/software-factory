@@ -8,8 +8,8 @@ export interface BranchRef {
 export interface PushResult {
   sha: string;
   created: boolean;
-  /** Present when the push is allowed but touches paths a reviewer should notice. */
-  sensitivePaths?: readonly string[];
+  /** Paths a reviewer should notice; empty when the push has none. */
+  sensitivePaths: readonly string[];
 }
 
 export interface BranchComparison {
@@ -76,7 +76,8 @@ export interface GitHubClient {
     baseBranch: string;
     title: string;
     body: string;
-    sensitivePaths?: readonly string[];
+    /** Forward the value returned by pushFiles; do not reconstruct or discard it. */
+    sensitivePaths: readonly string[];
   }): Promise<PullRequestRef>;
 
   commentOnIssue(input: {

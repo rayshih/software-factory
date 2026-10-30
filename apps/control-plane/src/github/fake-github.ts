@@ -182,7 +182,7 @@ export class FakeGitHub implements GitHubClient {
       return {
         sha: branch.sha,
         created: false,
-        ...(guard.sensitivePaths.length > 0 ? { sensitivePaths: guard.sensitivePaths } : {}),
+        sensitivePaths: guard.sensitivePaths,
       };
     }
     const sha = `commit-${repo.nextCommit++}`;
@@ -197,7 +197,7 @@ export class FakeGitHub implements GitHubClient {
     return {
       sha,
       created: true,
-      ...(guard.sensitivePaths.length > 0 ? { sensitivePaths: guard.sensitivePaths } : {}),
+      sensitivePaths: guard.sensitivePaths,
     };
   }
 
@@ -238,7 +238,7 @@ export class FakeGitHub implements GitHubClient {
     baseBranch: string;
     title: string;
     body: string;
-    sensitivePaths?: readonly string[];
+    sensitivePaths: readonly string[];
   }): Promise<PullRequestRef> {
     this.openPullRequestCalls += 1;
     const repo = this.repo(input.repo);

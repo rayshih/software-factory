@@ -335,6 +335,7 @@ describe("OctokitGitHub open pull lookup", () => {
       html_url: `https://github.com/${repo}/pull/${number}`,
       head: { ref: branch, repo: { full_name: repo } },
       base: { ref: base },
+      body: "body",
     };
   }
 
@@ -362,6 +363,7 @@ describe("OctokitGitHub open pull lookup", () => {
         baseBranch: "release",
         title: "Fix",
         body: "body",
+        sensitivePaths: [],
       }),
     ).resolves.toEqual({
       number: 240,
@@ -371,6 +373,39 @@ describe("OctokitGitHub open pull lookup", () => {
     expect(pullsCreate).not.toHaveBeenCalled();
     expect(pullsUpdate).not.toHaveBeenCalled();
     expect(pullsList).toHaveBeenCalledTimes(2);
+  });
+
+  it("adds the sensitive-path note and label to an existing pull request", async () => {
+    const pullsUpdate = vi.fn(async () => ({}));
+    const addLabels = vi.fn(async () => ({}));
+    const github = githubFor({
+      pulls: {
+        list: vi.fn(async () => ({ data: [pull("main", 12)] })),
+        create: vi.fn(),
+        update: pullsUpdate,
+      },
+      issues: { addLabels },
+    });
+
+    await github.openPullRequest({
+      installationId: 1,
+      repo,
+      headBranch: branch,
+      baseBranch: "main",
+      title: "Fix",
+      body: "new body",
+      sensitivePaths: [".github/workflows/ci.yml"],
+    });
+
+    expect(pullsUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        pull_number: 12,
+        body: expect.stringContaining(".github/workflows/ci.yml"),
+      }),
+    );
+    expect(addLabels).toHaveBeenCalledWith(
+      expect.objectContaining({ issue_number: 12, labels: ["touches-sensitive-paths"] }),
+    );
   });
 
   it("recovers a conflicting create by paginating to the existing pull request", async () => {
@@ -404,6 +439,7 @@ describe("OctokitGitHub open pull lookup", () => {
         baseBranch: "main",
         title: "Fix",
         body: "body",
+        sensitivePaths: [],
       }),
     ).resolves.toEqual({
       number: 9,

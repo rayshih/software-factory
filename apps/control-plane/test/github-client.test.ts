@@ -53,6 +53,7 @@ describe("FakeGitHub", () => {
       baseBranch: "main",
       title: "Fix",
       body: "body",
+      sensitivePaths: pushed.sensitivePaths,
     });
     const again = await github.openPullRequest({
       installationId: 1,
@@ -61,6 +62,7 @@ describe("FakeGitHub", () => {
       baseBranch: "main",
       title: "Fix again",
       body: "updated",
+      sensitivePaths: pushed.sensitivePaths,
     });
     expect(opened.created).toBe(true);
     expect(again.created).toBe(false);
@@ -88,6 +90,7 @@ describe("FakeGitHub", () => {
         baseBranch: "main",
         title: "Fix",
         body: "body",
+        sensitivePaths: [],
       }),
     ).rejects.toThrow(/No commits between/);
   });
@@ -103,6 +106,7 @@ describe("FakeGitHub", () => {
       baseBranch: "main",
       title: "Retitled",
       body: "updated",
+      sensitivePaths: [],
     });
     expect(opened.created).toBe(false);
     expect(opened.number).toBe(seeded.number);
@@ -128,6 +132,7 @@ describe("FakeGitHub", () => {
       baseBranch: "release",
       title: "Release fix",
       body: "release body",
+      sensitivePaths: [],
     });
     expect(releasePull.created).toBe(true);
     expect(releasePull.number).not.toBe(mainPull.number);
