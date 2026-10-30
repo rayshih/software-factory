@@ -3,7 +3,6 @@ import type { FileChange } from "./content-hash.js";
 export const DEFAULT_MAX_FILES = 50;
 export const DEFAULT_MAX_FILE_BYTES = 1_048_576;
 export const DEFAULT_MAX_TOTAL_BYTES = 5_242_880;
-const BRANCH_PATTERN = /^factory\/issue-[1-9]\d*$/;
 
 export interface PushGuardLimits {
   maxFiles: number;
@@ -29,6 +28,7 @@ export interface PushCheck {
 export function checkPush(input: {
   repo: string;
   branch: string;
+  issueNumber: number;
   files: readonly FileChange[];
   allowedRepos?: ReadonlySet<string>;
   limits?: Partial<PushGuardLimits>;
@@ -39,8 +39,11 @@ export function checkPush(input: {
     throw new PushRejectedError(`repository ${input.repo} is not allowlisted`);
   }
   if (input.requireFactoryBranch || input.allowedRepos) {
-    if (!BRANCH_PATTERN.test(input.branch)) {
-      throw new PushRejectedError(`branch ${input.branch} is not a factory issue branch`);
+    const expectedBranch = `factory/issue-${input.issueNumber}`;
+    if (input.branch !== expectedBranch) {
+      throw new PushRejectedError(
+        `branch ${input.branch} does not match issue #${input.issueNumber}`,
+      );
     }
   }
   const limits: PushGuardLimits = {

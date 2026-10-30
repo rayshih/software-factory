@@ -78,6 +78,16 @@ describe("push guard", () => {
         allowedRepos: new Set([repo]),
       }),
     ).rejects.toBeInstanceOf(PushRejectedError);
+    await expect(
+      client.pushFiles({
+        installationId: 1,
+        repo,
+        branch: "factory/issue-8",
+        issueNumber: 7,
+        files: [{ path: "src/fix.ts", content: "ok\n" }],
+        allowedRepos: new Set([repo]),
+      }),
+    ).rejects.toBeInstanceOf(PushRejectedError);
     expect(client.pushesCreated).toBe(0);
   });
 

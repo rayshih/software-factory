@@ -169,6 +169,7 @@ export class FakeGitHub implements GitHubClient {
     const guard = checkPush({
       repo: input.repo,
       branch: input.branch,
+      issueNumber: input.issueNumber,
       files: input.files,
       allowedRepos: input.allowedRepos,
       limits: input.limits,

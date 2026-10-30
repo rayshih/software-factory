@@ -211,6 +211,21 @@ describe("OctokitGitHub push history", () => {
     expect(getRef).not.toHaveBeenCalled();
   });
 
+  it("rejects a branch for a different issue before contacting GitHub", async () => {
+    const getRef = vi.fn();
+    const github = githubFor({ git: { getRef } });
+    await expect(
+      github.pushFiles({
+        installationId: 1,
+        repo,
+        branch: "factory/issue-8",
+        issueNumber: 7,
+        files,
+      }),
+    ).rejects.toBeInstanceOf(PushRejectedError);
+    expect(getRef).not.toHaveBeenCalled();
+  });
+
   it("keeps mode 100755 when editing an executable file", async () => {
     const createTree = vi.fn(async () => ({ data: { sha: "new-tree" } }));
     const getTree = vi.fn(async ({ tree_sha }: { tree_sha: string }) => {
