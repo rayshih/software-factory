@@ -41,7 +41,19 @@ docker build -f apps/control-plane/Dockerfile .
 
 **Queue: Trigger.dev v4** (`@trigger.dev/sdk`). `run-issue` has a queue concurrency limit of 2, plus `concurrency: { total: 2, perKey: 1 }` so each repository runs one at a time when triggered with `concurrencyKey` set to the repo. Retries: 3 attempts, exponential backoff.
 
-**Agent: Claude Managed Agents** (`client.beta.agents` and `client.beta.sessions` in `@anthropic-ai/sdk` 1.x). `AnthropicManagedAgentRuntime` creates a cloud environment, mounts the repository on `factory/issue-<n>`, and streams until the session is idle, terminated, or errors. That status is returned as data. The orchestrator still decides completion from the branch and the pull request. Without `ANTHROPIC_API_KEY`, the worker uses `StubAgentRuntime`, which reports zero cost and does not modify the repository.
+**Agent: Claude Managed Agents** (`client.beta.agents` and `client.beta.sessions` in `@anthropic-ai/sdk` 1.x). The control plane downloads a repository tarball and uploads it into a new cloud environment. The session does not receive a GitHub installation token. It edits files and returns; the control plane commits and opens the pull request. Without `ANTHROPIC_API_KEY`, the worker uses `StubAgentRuntime`, which reports zero cost and does not modify the repository.
+
+## Trust boundary
+
+The agent is untrusted. GitHub issue title and body are placed in an `<issue-data>` block and the system prompt tells the model that text is data, not instructions.
+
+| Boundary | What the agent gets |
+| --- | --- |
+| Credentials | No installation token, no control-plane env, no database URL. The control plane performs every GitHub write. |
+| Workspace | A new environment per run. The previous session's files are not reused. |
+| Network | `networking.type: limited`, package-manager registries only (`registry.npmjs.org`, `pypi.org`, `files.pythonhosted.org`). GitHub hosts are not on the list. |
+| Metadata | The allow-list does not include cloud metadata addresses. Managed Agents does not expose a separate switch for link-local metadata, so blocking it depends on that limited network. For the demo repository this is an accepted risk until design partners are onboarded. |
+| Sensitive files | A push that touches workflows, actions, CODEOWNERS, Dockerfile, Render/Fly config, or Terraform is allowed and labeled `touches-sensitive-paths`. A human still reviews it. The factory does not merge. |
 
 ## What is real, and what is a stand-in
 
