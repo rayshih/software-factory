@@ -102,7 +102,9 @@ function assertSafePath(path: string): void {
   for (const segment of segments) {
     if (segment.length === 0) throw new PushRejectedError(`${path} has an empty segment`, path);
     if (segment === "..") throw new PushRejectedError(`${path} escapes the repository`, path);
-    if (segment === ".git") throw new PushRejectedError(`${path} is inside .git`, path);
+    if (segment.toLowerCase() === ".git") {
+      throw new PushRejectedError(`${path} is inside .git`, path);
+    }
   }
 }
 

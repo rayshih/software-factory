@@ -40,6 +40,8 @@ describe("push guard", () => {
     const client = github();
     const blocked = [
       ".git/config",
+      ".GIT/config",
+      "src/.Git/hooks/post-checkout",
       "../secret.txt",
       "/etc/passwd",
       "src\\fix.ts",
