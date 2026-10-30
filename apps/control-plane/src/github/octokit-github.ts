@@ -243,13 +243,7 @@ export class OctokitGitHub implements GitHubClient {
               input.headBranch,
               input.baseBranch,
             )
-          : await this.findOpenPull(
-              octokit,
-              owner,
-              repo,
-              input.headBranch,
-              input.baseBranch,
-            );
+          : await this.findOpenPull(octokit, owner, repo, input.headBranch, input.baseBranch);
         if (raced) return { number: raced.number, url: raced.url, created: false };
       }
       throw error;
