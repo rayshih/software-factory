@@ -1,13 +1,15 @@
 import { randomUUID } from "node:crypto";
-import { and, desc, eq, inArray, max, or, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, lte, max, or, sql } from "drizzle-orm";
 import { formatUsd } from "../money.js";
 import { idempotencyKey } from "../tasks/ids.js";
 import { ACTIVE_STATUSES, type TaskStatus } from "../tasks/status.js";
 import type { AppDatabase } from "../db/client.js";
 import { taskEvents, tasks, webhookDeliveries } from "../db/schema.js";
 import {
+  StaleRunError,
   TaskStatusConflict,
   type AppendEventInput,
+  type ClaimRunInput,
   type CreateTaskInput,
   type DeliveryRecord,
   type DeliveryStatus,
@@ -68,6 +70,8 @@ export function createTaskStore(db: AppDatabase): TaskStore {
           updatedAt: now,
           startedAt: null,
           finishedAt: null,
+          runId: null,
+          leaseExpiresAt: null,
         })
         .returning();
       if (!row) throw new Error("task insert returned no row");
@@ -79,20 +83,64 @@ export function createTaskStore(db: AppDatabase): TaskStore {
       return row ? mapTask(row) : null;
     },
 
-    async updateTask(id, patch, expectedStatus?: TaskStatus) {
+    async updateTask(id, patch, expectedStatus?: TaskStatus, expectedRunId?: string) {
       if (patch.status !== undefined && expectedStatus === undefined) {
         throw new Error(`task ${id} status change requires the status the caller observed`);
       }
-      const where =
-        expectedStatus === undefined
-          ? eq(tasks.id, id)
-          : and(eq(tasks.id, id), eq(tasks.status, expectedStatus));
-      const [row] = await db.update(tasks).set(toUpdate(patch)).where(where).returning();
+      const conditions = [eq(tasks.id, id)];
+      if (expectedStatus !== undefined) conditions.push(eq(tasks.status, expectedStatus));
+      if (expectedRunId !== undefined) conditions.push(eq(tasks.runId, expectedRunId));
+      const [row] = await db
+        .update(tasks)
+        .set(toUpdate(patch))
+        .where(and(...conditions))
+        .returning();
       if (!row) {
+        if (expectedRunId !== undefined) throw new StaleRunError(id, expectedRunId);
         if (expectedStatus !== undefined) throw new TaskStatusConflict(id, expectedStatus);
         throw new Error(`task ${id} not found`);
       }
       return mapTask(row);
+    },
+
+    async claimRun(id, input: ClaimRunInput) {
+      const [row] = await db
+        .update(tasks)
+        .set({
+          status: "running",
+          runId: input.runId,
+          leaseExpiresAt: input.leaseExpiresAt,
+          attempts: sql`${tasks.attempts} + 1`,
+          startedAt: sql`COALESCE(${tasks.startedAt}, ${input.now})`,
+          ciResult: null,
+          reviewOutcome: null,
+          failureReason: null,
+          failureCategory: null,
+          finishedAt: null,
+          updatedAt: input.now,
+        })
+        .where(
+          and(
+            eq(tasks.id, id),
+            eq(tasks.status, input.expectedStatus),
+            or(
+              isNull(tasks.runId),
+              isNull(tasks.leaseExpiresAt),
+              lte(tasks.leaseExpiresAt, input.now),
+            ),
+          ),
+        )
+        .returning();
+      return row ? mapTask(row) : null;
+    },
+
+    async renewRun(id, runId, leaseExpiresAt, now) {
+      const rows = await db
+        .update(tasks)
+        .set({ leaseExpiresAt, updatedAt: now })
+        .where(and(eq(tasks.id, id), eq(tasks.runId, runId)))
+        .returning({ id: tasks.id });
+      return rows.length > 0;
     },
 
     async findActiveTask(repo, issueNumber) {
@@ -241,10 +289,23 @@ function preferActive(rows: TaskRow[]): TaskRecord | null {
 }
 
 function toUpdate(patch: UpdateTaskPatch): Partial<typeof tasks.$inferInsert> {
-  return {
-    ...patch,
-    updatedAt: patch.updatedAt ?? new Date(),
+  const { costUsdDelta, tokensDelta, interventionsDelta, humanInterventionMinutesDelta, ...rest } =
+    patch;
+  const set: Record<string, unknown> = {
+    ...rest,
+    updatedAt: rest.updatedAt ?? new Date(),
   };
+  if (costUsdDelta !== undefined) {
+    set.costUsd = sql`${tasks.costUsd} + ${costUsdDelta}::numeric`;
+  }
+  if (tokensDelta !== undefined) set.tokens = sql`${tasks.tokens} + ${tokensDelta}`;
+  if (interventionsDelta !== undefined) {
+    set.interventions = sql`${tasks.interventions} + ${interventionsDelta}`;
+  }
+  if (humanInterventionMinutesDelta !== undefined) {
+    set.humanInterventionMinutes = sql`${tasks.humanInterventionMinutes} + ${humanInterventionMinutesDelta}`;
+  }
+  return set as Partial<typeof tasks.$inferInsert>;
 }
 
 function mapTask(row: TaskRow): TaskRecord {
@@ -274,6 +335,8 @@ function mapTask(row: TaskRow): TaskRecord {
     updatedAt: asDate(row.updatedAt),
     startedAt: row.startedAt ? asDate(row.startedAt) : null,
     finishedAt: row.finishedAt ? asDate(row.finishedAt) : null,
+    runId: row.runId,
+    leaseExpiresAt: row.leaseExpiresAt ? asDate(row.leaseExpiresAt) : null,
   };
 }
 

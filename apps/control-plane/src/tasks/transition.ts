@@ -8,8 +8,10 @@ export async function transitionTask(
   to: TaskStatus,
   patch: UpdateTaskPatch,
   event: { type: string; message: string; payload?: Record<string, unknown> },
+  expectedRunId?: string,
 ): Promise<TaskRecord> {
   assertCanTransition(task.status, to);
+  const leavingRun = task.status === "running" && to !== "running";
   const updated = await deps.store.updateTask(
     task.id,
     {
@@ -18,8 +20,10 @@ export async function transitionTask(
       finishedAt: isTerminal(to)
         ? (patch.finishedAt ?? deps.clock.now())
         : (patch.finishedAt ?? null),
+      ...(leavingRun ? { runId: null, leaseExpiresAt: null } : {}),
     },
     task.status,
+    expectedRunId,
   );
   await deps.store.appendEvent({
     taskId: task.id,

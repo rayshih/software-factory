@@ -26,6 +26,9 @@ export interface TaskRecord {
   updatedAt: Date;
   startedAt: Date | null;
   finishedAt: Date | null;
+  /** Worker that owns the current attempt. Null when no lease is held. */
+  runId: string | null;
+  leaseExpiresAt: Date | null;
 }
 
 export interface CreateTaskInput {
@@ -41,6 +44,30 @@ export interface CreateTaskInput {
 }
 
 /** The update ran, but the task was no longer in the status the caller had observed. */
+/** Another live worker holds the lease, so this invocation must not run. */
+export class LeaseHeldError extends Error {
+  readonly taskId: string;
+
+  constructor(taskId: string) {
+    super(`task ${taskId} is leased to another run`);
+    this.name = "LeaseHeldError";
+    this.taskId = taskId;
+  }
+}
+
+/** The run id no longer owns the task. Writes from this worker must stop. */
+export class StaleRunError extends Error {
+  readonly taskId: string;
+  readonly runId: string;
+
+  constructor(taskId: string, runId: string) {
+    super(`run ${runId} no longer owns task ${taskId}`);
+    this.name = "StaleRunError";
+    this.taskId = taskId;
+    this.runId = runId;
+  }
+}
+
 export class TaskStatusConflict extends Error {
   readonly taskId: string;
   readonly expectedStatus: TaskStatus;
@@ -69,6 +96,20 @@ export interface UpdateTaskPatch {
   startedAt?: Date | null;
   finishedAt?: Date | null;
   updatedAt?: Date;
+  runId?: string | null;
+  leaseExpiresAt?: Date | null;
+  /** Added in SQL so two workers cannot lose an increment. */
+  costUsdDelta?: string;
+  tokensDelta?: number;
+  interventionsDelta?: number;
+  humanInterventionMinutesDelta?: number;
+}
+
+export interface ClaimRunInput {
+  runId: string;
+  expectedStatus: TaskStatus;
+  leaseExpiresAt: Date;
+  now: Date;
 }
 
 export interface TaskEventRecord {
@@ -128,7 +169,20 @@ export interface TaskStore {
    * observed. The write matches that status, so a concurrent transition is
    * not overwritten. Allowed edges are checked by `transitionTask`.
    */
-  updateTask(id: string, patch: UpdateTaskPatch, expectedStatus?: TaskStatus): Promise<TaskRecord>;
+  updateTask(
+    id: string,
+    patch: UpdateTaskPatch,
+    expectedStatus?: TaskStatus,
+    expectedRunId?: string,
+  ): Promise<TaskRecord>;
+  /**
+   * One worker becomes the owner. Matches the observed status only when no
+   * unexpired lease is held, and increments attempts in the same write.
+   * Returns null when another worker won.
+   */
+  claimRun(id: string, input: ClaimRunInput): Promise<TaskRecord | null>;
+  /** Extends the lease. False when this run id is no longer the owner. */
+  renewRun(id: string, runId: string, leaseExpiresAt: Date, now: Date): Promise<boolean>;
   findActiveTask(repo: string, issueNumber: number): Promise<TaskRecord | null>;
   findByBranch(repo: string, branch: string): Promise<TaskRecord | null>;
   findByPullRequest(repo: string, prNumber: number): Promise<TaskRecord | null>;

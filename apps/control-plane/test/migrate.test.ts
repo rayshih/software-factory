@@ -21,7 +21,7 @@ describe("applyMigrations", () => {
   it("applies the real migrations once and skips them on the next boot", async () => {
     const client = new PGlite();
     const database = executor(client);
-    expect(await applyMigrations(database)).toEqual(["0001_init.sql"]);
+    expect(await applyMigrations(database)).toEqual(["0001_init.sql", "0002_run_lease.sql"]);
     expect(await applyMigrations(database)).toEqual([]);
   });
 

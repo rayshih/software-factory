@@ -1,9 +1,12 @@
-import { addUsd } from "../money.js";
+import { randomUUID } from "node:crypto";
 import type { AgentRunResult } from "../agent/types.js";
 import type { PipelineDependencies } from "../pipeline.js";
-import type { TaskRecord } from "../store/types.js";
+import { LeaseHeldError, StaleRunError, type TaskRecord } from "../store/types.js";
 import { PR_LINK_MARKER } from "./ids.js";
 import { transitionTask } from "./transition.js";
+
+const DEFAULT_LEASE_MS = 60_000;
+const DEFAULT_RENEW_MS = 20_000;
 
 export interface RunIssuePayload {
   taskId: string;
@@ -35,110 +38,140 @@ export async function executeRunIssue(
     throw new Error(`repository ${existing.repo} is not allowlisted`);
   }
 
-  let task = existing;
-  if (task.status === "queued" || task.status === "ci_failed") {
-    const attempt = task.attempts + 1;
-    task = await transitionTask(
-      deps,
-      task,
-      "running",
-      {
-        attempts: attempt,
-        startedAt: task.startedAt ?? deps.clock.now(),
-        ciResult: null,
-        reviewOutcome: null,
-        failureReason: null,
-        failureCategory: null,
-        finishedAt: null,
-      },
-      { type: "run_started", message: `Attempt ${attempt} started` },
-    );
-  } else if (task.status === "running") {
-    task = await deps.store.updateTask(task.id, { attempts: task.attempts + 1 });
-    await deps.store.appendEvent({
-      taskId: task.id,
-      type: "run_retry",
-      message: `Retry attempt ${task.attempts}`,
-      payload: {},
-      createdAt: deps.clock.now(),
-    });
+  if (
+    existing.status !== "queued" &&
+    existing.status !== "ci_failed" &&
+    existing.status !== "running"
+  ) {
+    return healPullRequest(deps, existing);
+  }
+  const now = deps.clock.now();
+  if (existing.status === "running" && leaseIsCurrent(existing, now)) {
+    throw new LeaseHeldError(existing.id);
   }
 
-  if (task.status !== "running") {
-    return healPullRequest(deps, task);
-  }
-
-  await deps.github.ensureBranch({
-    installationId: task.installationId,
-    repo: task.repo,
-    branch: task.branch,
-    baseBranch: deps.baseBranch,
+  const runId = randomUUID();
+  const leaseMs = deps.leaseDurationMs ?? DEFAULT_LEASE_MS;
+  const claimed = await deps.store.claimRun(existing.id, {
+    runId,
+    expectedStatus: existing.status,
+    leaseExpiresAt: new Date(now.getTime() + leaseMs),
+    now,
   });
-
-  const token = await deps.github.getInstallationToken(task.installationId);
-  const result = await deps.agent.run({
-    taskId: task.id,
-    repo: task.repo,
-    issueNumber: task.issueNumber,
-    issueTitle: task.issueTitle,
-    issueBody: task.issueBody,
-    branch: task.branch,
-    baseBranch: deps.baseBranch,
-    attempt: task.attempts,
-    installationToken: token,
-  });
-
-  task = await deps.store.updateTask(task.id, {
-    costUsd: addUsd(task.costUsd, result.costUsd),
-    tokens: task.tokens + result.tokens,
-    interventions: task.interventions + result.interventions,
-    humanInterventionMinutes: task.humanInterventionMinutes + result.humanInterventionMinutes,
-  });
+  if (!claimed) throw new LeaseHeldError(existing.id);
   await deps.store.appendEvent({
-    taskId: task.id,
-    type: "agent_finished",
-    message: result.summary,
-    payload: {
-      sessionStatus: result.sessionStatus,
-      costUsd: result.costUsd,
-      tokens: result.tokens,
-      interventions: result.interventions,
-    },
-    createdAt: deps.clock.now(),
+    taskId: claimed.id,
+    type: existing.status === "running" ? "run_retry" : "run_started",
+    message:
+      existing.status === "running"
+        ? `Took over attempt ${claimed.attempts}`
+        : `Attempt ${claimed.attempts} started`,
+    payload: { runId },
+    createdAt: now,
   });
 
-  if (result.files.length > 0) {
-    await deps.github.pushFiles({
+  let lostLease = false;
+  const renewMs = deps.leaseRenewIntervalMs ?? DEFAULT_RENEW_MS;
+  const renewTimer =
+    renewMs > 0
+      ? setInterval(() => {
+          const renewedAt = deps.clock.now();
+          void deps.store
+            .renewRun(claimed.id, runId, new Date(renewedAt.getTime() + leaseMs), renewedAt)
+            .then((owned) => {
+              if (!owned) lostLease = true;
+            });
+        }, renewMs)
+      : undefined;
+  renewTimer?.unref();
+
+  try {
+    let task = claimed;
+    await requireRun(deps, task.id, runId);
+    await deps.github.ensureBranch({
       installationId: task.installationId,
       repo: task.repo,
       branch: task.branch,
-      issueNumber: task.issueNumber,
-      files: result.files,
+      baseBranch: deps.baseBranch,
     });
-  }
 
-  const comparison = await deps.github.compare({
-    installationId: task.installationId,
-    repo: task.repo,
-    base: deps.baseBranch,
-    head: task.branch,
-  });
-  if (comparison.aheadBy > 0) {
-    return recordPullRequest(deps, task, result.summary);
-  }
+    const token = await deps.github.getInstallationToken(task.installationId);
+    const result = await deps.agent.run({
+      taskId: task.id,
+      repo: task.repo,
+      issueNumber: task.issueNumber,
+      issueTitle: task.issueTitle,
+      issueBody: task.issueBody,
+      branch: task.branch,
+      baseBranch: deps.baseBranch,
+      attempt: task.attempts,
+      installationToken: token,
+    });
+    if (lostLease) throw new StaleRunError(task.id, runId);
 
-  const failure = failureForEmptySession(result);
-  return transitionTask(
-    deps,
-    task,
-    "failed",
-    { failureReason: failure.reason, failureCategory: failure.category },
-    {
-      type: "run_failed",
-      message: failure.reason,
-      payload: { sessionStatus: result.sessionStatus },
-    },
-  );
+    task = await deps.store.updateTask(
+      task.id,
+      {
+        costUsdDelta: result.costUsd,
+        tokensDelta: result.tokens,
+        interventionsDelta: result.interventions,
+        humanInterventionMinutesDelta: result.humanInterventionMinutes,
+      },
+      undefined,
+      runId,
+    );
+    await deps.store.appendEvent({
+      taskId: task.id,
+      type: "agent_finished",
+      message: result.summary,
+      payload: {
+        sessionStatus: result.sessionStatus,
+        costUsd: result.costUsd,
+        tokens: result.tokens,
+        interventions: result.interventions,
+        runId,
+      },
+      createdAt: deps.clock.now(),
+    });
+
+    await requireRun(deps, task.id, runId);
+    if (result.files.length > 0) {
+      await deps.github.pushFiles({
+        installationId: task.installationId,
+        repo: task.repo,
+        branch: task.branch,
+        issueNumber: task.issueNumber,
+        files: result.files,
+      });
+    }
+
+    await requireRun(deps, task.id, runId);
+    const comparison = await deps.github.compare({
+      installationId: task.installationId,
+      repo: task.repo,
+      base: deps.baseBranch,
+      head: task.branch,
+    });
+    if (comparison.aheadBy > 0) {
+      return recordPullRequest(deps, task, result.summary, runId);
+    }
+
+    const failure = failureForEmptySession(result);
+    return transitionTask(
+      deps,
+      task,
+      "failed",
+      { failureReason: failure.reason, failureCategory: failure.category },
+      {
+        type: "run_failed",
+        message: failure.reason,
+        payload: { sessionStatus: result.sessionStatus, runId },
+      },
+      runId,
+    );
+  } finally {
+    if (renewTimer) clearInterval(renewTimer);
+  }
 }
 
 async function healPullRequest(deps: PipelineDependencies, task: TaskRecord): Promise<TaskRecord> {
@@ -156,6 +189,7 @@ async function recordPullRequest(
   deps: PipelineDependencies,
   task: TaskRecord,
   summary: string,
+  runId?: string,
 ): Promise<TaskRecord> {
   const title = `[factory] ${task.issueTitle} (#${task.issueNumber})`.slice(0, 240);
   const body = [
@@ -166,6 +200,7 @@ async function recordPullRequest(
     "Human review is required. Software Factory does not merge pull requests.",
     PR_LINK_MARKER,
   ].join("\n");
+  if (runId) await requireRun(deps, task.id, runId);
   const pull = await deps.github.openPullRequest({
     installationId: task.installationId,
     repo: task.repo,
@@ -175,34 +210,11 @@ async function recordPullRequest(
     body,
   });
 
-  let next = task;
-  if (task.status === "running") {
-    next = await transitionTask(
-      deps,
-      task,
-      "pr_opened",
-      { prNumber: pull.number, prUrl: pull.url },
-      {
-        type: pull.created ? "pr_opened" : "pr_reused",
-        message: pull.created ? `Opened ${pull.url}` : `Reused open pull request ${pull.url}`,
-        payload: { prNumber: pull.number, prUrl: pull.url, created: pull.created },
-      },
-    );
-  } else if (task.prNumber !== pull.number || task.prUrl !== pull.url) {
-    next = await deps.store.updateTask(task.id, { prNumber: pull.number, prUrl: pull.url });
-    await deps.store.appendEvent({
-      taskId: task.id,
-      type: "pr_reused",
-      message: `Recorded existing pull request ${pull.url}`,
-      payload: { prNumber: pull.number, prUrl: pull.url, created: pull.created },
-      createdAt: deps.clock.now(),
-    });
-  }
-
+  if (runId) await requireRun(deps, task.id, runId);
   const comment = await deps.github.commentOnIssue({
-    installationId: next.installationId,
-    repo: next.repo,
-    issueNumber: next.issueNumber,
+    installationId: task.installationId,
+    repo: task.repo,
+    issueNumber: task.issueNumber,
     marker: PR_LINK_MARKER,
     body: [
       `Opened a pull request for this issue: ${pull.url}`,
@@ -212,15 +224,60 @@ async function recordPullRequest(
     ].join("\n"),
   });
   await deps.store.appendEvent({
-    taskId: next.id,
+    taskId: task.id,
     type: comment.created ? "issue_comment" : "issue_comment_reused",
     message: comment.created
       ? "Commented on the issue with the pull request link"
       : "Issue comment already present",
-    payload: { commentId: comment.id },
+    payload: { commentId: comment.id, runId },
     createdAt: deps.clock.now(),
   });
-  return next;
+
+  if (task.status === "running") {
+    return transitionTask(
+      deps,
+      task,
+      "pr_opened",
+      { prNumber: pull.number, prUrl: pull.url },
+      {
+        type: pull.created ? "pr_opened" : "pr_reused",
+        message: pull.created ? `Opened ${pull.url}` : `Reused open pull request ${pull.url}`,
+        payload: { prNumber: pull.number, prUrl: pull.url, created: pull.created, runId },
+      },
+      runId,
+    );
+  }
+  if (task.prNumber !== pull.number || task.prUrl !== pull.url) {
+    const next = await deps.store.updateTask(
+      task.id,
+      { prNumber: pull.number, prUrl: pull.url },
+      undefined,
+      runId,
+    );
+    await deps.store.appendEvent({
+      taskId: task.id,
+      type: "pr_reused",
+      message: `Recorded existing pull request ${pull.url}`,
+      payload: { prNumber: pull.number, prUrl: pull.url, created: pull.created },
+      createdAt: deps.clock.now(),
+    });
+    return next;
+  }
+  return task;
+}
+
+function leaseIsCurrent(task: TaskRecord, now: Date): boolean {
+  return task.leaseExpiresAt !== null && task.leaseExpiresAt.getTime() > now.getTime();
+}
+
+async function requireRun(
+  deps: PipelineDependencies,
+  taskId: string,
+  runId: string,
+): Promise<TaskRecord> {
+  const current = await deps.store.getTask(taskId);
+  if (!current || current.runId !== runId) throw new StaleRunError(taskId, runId);
+  return current;
 }
 
 function failureForEmptySession(result: AgentRunResult): { reason: string; category: string } {

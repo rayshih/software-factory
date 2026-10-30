@@ -51,6 +51,10 @@ export const tasks = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull(),
     startedAt: timestamp("started_at", { withTimezone: true }),
     finishedAt: timestamp("finished_at", { withTimezone: true }),
+    /** Fencing token for the worker that currently owns this attempt. */
+    runId: text("run_id"),
+    /** After this instant another worker may claim the task. */
+    leaseExpiresAt: timestamp("lease_expires_at", { withTimezone: true }),
   },
   (table) => [
     unique("tasks_idempotency_key_key").on(table.idempotencyKey),
