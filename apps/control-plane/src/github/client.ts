@@ -8,6 +8,8 @@ export interface BranchRef {
 export interface PushResult {
   sha: string;
   created: boolean;
+  /** Present when the push is allowed but touches paths a reviewer should notice. */
+  sensitivePaths?: readonly string[];
 }
 
 export interface BranchComparison {
@@ -56,6 +58,8 @@ export interface GitHubClient {
     branch: string;
     issueNumber: number;
     files: readonly FileChange[];
+    allowedRepos?: ReadonlySet<string>;
+    limits?: { maxFiles?: number; maxFileBytes?: number; maxTotalBytes?: number };
   }): Promise<PushResult>;
 
   compare(input: {
@@ -72,6 +76,7 @@ export interface GitHubClient {
     baseBranch: string;
     title: string;
     body: string;
+    sensitivePaths?: readonly string[];
   }): Promise<PullRequestRef>;
 
   commentOnIssue(input: {

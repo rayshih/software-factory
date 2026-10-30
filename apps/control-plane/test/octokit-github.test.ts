@@ -8,6 +8,7 @@ import {
 import { CommitHistoryLookupLimitError } from "../src/github/commit-history.js";
 import { operationMarker } from "../src/github/issue-comment.js";
 import { OctokitGitHub, UnsupportedFileModeError } from "../src/github/octokit-github.js";
+import { PushRejectedError } from "../src/github/push-guard.js";
 
 const repo = "rayshih/sf-demo-todo-api";
 const files = [{ path: "src/fix.ts", content: "export const fixed = true;\n" }];
@@ -193,6 +194,21 @@ describe("OctokitGitHub push history", () => {
       }),
     ).rejects.toBeInstanceOf(DuplicateFilePathError);
     expect(createCommit).not.toHaveBeenCalled();
+  });
+
+  it("rejects a secret file before contacting GitHub", async () => {
+    const getRef = vi.fn();
+    const github = githubFor({ git: { getRef } });
+    await expect(
+      github.pushFiles({
+        installationId: 1,
+        repo,
+        branch,
+        issueNumber: 7,
+        files: [{ path: ".env", content: "TOKEN=ghs_secret\n" }],
+      }),
+    ).rejects.toBeInstanceOf(PushRejectedError);
+    expect(getRef).not.toHaveBeenCalled();
   });
 
   it("keeps mode 100755 when editing an executable file", async () => {
