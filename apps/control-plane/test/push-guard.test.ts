@@ -132,6 +132,25 @@ describe("push guard", () => {
     expect(client.pushesCreated).toBe(0);
   });
 
+  it("rejects invalid push limits before writing", async () => {
+    const client = github();
+    const invalidLimits = [
+      { maxFiles: Number.NaN },
+      { maxFileBytes: Number.POSITIVE_INFINITY },
+      { maxTotalBytes: -1 },
+      { maxFiles: 1.5 },
+      { maxFiles: 51 },
+      { maxFileBytes: 1_048_577 },
+      { maxTotalBytes: 5_242_881 },
+    ];
+    for (const limits of invalidLimits) {
+      await expect(
+        push(client, [{ path: "a.txt", content: "hello\n" }], { limits }),
+      ).rejects.toBeInstanceOf(PushRejectedError);
+    }
+    expect(client.pushesCreated).toBe(0);
+  });
+
   it("allows a workflow edit and records it as sensitive", async () => {
     const client = github();
     const pushed = await push(client, [

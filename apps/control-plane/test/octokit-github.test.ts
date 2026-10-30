@@ -243,6 +243,30 @@ describe("OctokitGitHub push history", () => {
     expect(getRef).not.toHaveBeenCalled();
   });
 
+  it("rejects invalid push limits before contacting GitHub", async () => {
+    const getRef = vi.fn();
+    const github = githubFor({ git: { getRef } });
+    const invalidLimits = [
+      { maxFiles: Number.NaN },
+      { maxFileBytes: Number.POSITIVE_INFINITY },
+      { maxTotalBytes: -1 },
+      { maxFiles: 1.5 },
+    ];
+    for (const limits of invalidLimits) {
+      await expect(
+        github.pushFiles({
+          installationId: 1,
+          repo,
+          branch,
+          issueNumber: 7,
+          files,
+          limits,
+        }),
+      ).rejects.toBeInstanceOf(PushRejectedError);
+    }
+    expect(getRef).not.toHaveBeenCalled();
+  });
+
   it("keeps mode 100755 when editing an executable file", async () => {
     const createTree = vi.fn(async () => ({ data: { sha: "new-tree" } }));
     const getTree = vi.fn(async ({ tree_sha }: { tree_sha: string }) => {

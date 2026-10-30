@@ -54,6 +54,9 @@ export function checkPush(input: {
     maxFileBytes: input.limits?.maxFileBytes ?? DEFAULT_MAX_FILE_BYTES,
     maxTotalBytes: input.limits?.maxTotalBytes ?? DEFAULT_MAX_TOTAL_BYTES,
   };
+  assertValidLimit("maxFiles", limits.maxFiles, DEFAULT_MAX_FILES);
+  assertValidLimit("maxFileBytes", limits.maxFileBytes, DEFAULT_MAX_FILE_BYTES);
+  assertValidLimit("maxTotalBytes", limits.maxTotalBytes, DEFAULT_MAX_TOTAL_BYTES);
   if (input.files.length > limits.maxFiles) {
     throw new PushRejectedError(
       `push has ${input.files.length} files; limit is ${limits.maxFiles}`,
@@ -80,6 +83,12 @@ export function checkPush(input: {
     throw new PushRejectedError(`push is ${total} bytes; limit is ${limits.maxTotalBytes}`);
   }
   return { sensitivePaths };
+}
+
+function assertValidLimit(name: keyof PushGuardLimits, value: number, maximum: number): void {
+  if (!Number.isSafeInteger(value) || value <= 0 || value > maximum) {
+    throw new PushRejectedError(`invalid ${name} limit: ${value}`);
+  }
 }
 
 export function sensitivePullNote(paths: readonly string[]): string {
