@@ -423,6 +423,66 @@ describe("OctokitGitHub open pull lookup", () => {
     );
   });
 
+  it("creates a missing sensitive-path label and retries applying it", async () => {
+    const missing = Object.assign(new Error("label does not exist"), { status: 404 });
+    const addLabels = vi.fn().mockRejectedValueOnce(missing).mockResolvedValueOnce({});
+    const createLabel = vi.fn(async () => ({}));
+    const github = githubFor({
+      pulls: {
+        list: vi.fn(async () => ({ data: [pull("main", 12)] })),
+        create: vi.fn(),
+        update: vi.fn(async () => ({})),
+      },
+      issues: { addLabels, createLabel },
+    });
+
+    await github.openPullRequest({
+      installationId: 1,
+      repo,
+      headBranch: branch,
+      baseBranch: "main",
+      title: "Fix",
+      body: "body",
+      sensitivePaths: [".github/workflows/ci.yml"],
+    });
+
+    expect(createLabel).toHaveBeenCalledWith(
+      expect.objectContaining({ name: "touches-sensitive-paths" }),
+    );
+    expect(addLabels).toHaveBeenCalledTimes(2);
+  });
+
+  it("retries applying a sensitive-path label after another worker creates it", async () => {
+    const missing = Object.assign(new Error("label does not exist"), { status: 404 });
+    const alreadyExists = Object.assign(new Error("label already exists"), { status: 422 });
+    const addLabels = vi.fn().mockRejectedValueOnce(missing).mockResolvedValueOnce({});
+    const github = githubFor({
+      pulls: {
+        list: vi.fn(async () => ({ data: [pull("main", 12)] })),
+        create: vi.fn(),
+        update: vi.fn(async () => ({})),
+      },
+      issues: { addLabels, createLabel: vi.fn(async () => Promise.reject(alreadyExists)) },
+    });
+
+    await expect(
+      github.openPullRequest({
+        installationId: 1,
+        repo,
+        headBranch: branch,
+        baseBranch: "main",
+        title: "Fix",
+        body: "body",
+        sensitivePaths: [".github/workflows/ci.yml"],
+      }),
+    ).resolves.toEqual({
+      number: 12,
+      url: `https://github.com/${repo}/pull/12`,
+      created: false,
+    });
+    expect(addLabels).toHaveBeenCalledTimes(2);
+  });
+
   it("recovers a conflicting create by paginating to the existing pull request", async () => {
     const conflict = Object.assign(new Error("already exists"), { status: 422 });
     let created = false;

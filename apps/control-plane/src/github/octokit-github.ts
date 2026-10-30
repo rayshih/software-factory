@@ -403,12 +403,32 @@ export class OctokitGitHub implements GitHubClient {
     paths: readonly string[] | undefined,
   ): Promise<void> {
     if (!paths || paths.length === 0) return;
-    await octokit.rest.issues.addLabels({
-      owner,
-      repo,
-      issue_number: pullNumber,
-      labels: [SENSITIVE_PATH_LABEL],
-    });
+    const addLabel = () =>
+      octokit.rest.issues.addLabels({
+        owner,
+        repo,
+        issue_number: pullNumber,
+        labels: [SENSITIVE_PATH_LABEL],
+      });
+    try {
+      await addLabel();
+      return;
+    } catch (error) {
+      if (!isHttpStatus(error, 404)) throw error;
+    }
+    try {
+      await octokit.rest.issues.createLabel({
+        owner,
+        repo,
+        name: SENSITIVE_PATH_LABEL,
+        color: "B60205",
+        description: "Changes files that require additional review",
+      });
+    } catch (error) {
+      // Another worker may have created the label after addLabels returned 404.
+      if (!isHttpStatus(error, 422)) throw error;
+    }
+    await addLabel();
   }
 
   private async addSensitiveNote(
