@@ -75,7 +75,7 @@ describe("OctokitGitHub push history", () => {
 
     await expect(
       github.pushFiles({ installationId: 1, repo, branch, issueNumber: 7, files }),
-    ).resolves.toEqual({ sha: "tip", created: false });
+    ).resolves.toEqual({ sha: "tip", created: false, sensitivePaths: [] });
     expect(createCommit).not.toHaveBeenCalled();
   });
 
@@ -97,7 +97,7 @@ describe("OctokitGitHub push history", () => {
 
     await expect(
       github.pushFiles({ installationId: 1, repo, branch, issueNumber: 7, files }),
-    ).resolves.toEqual({ sha: "new-sha", created: true });
+    ).resolves.toEqual({ sha: "new-sha", created: true, sensitivePaths: [] });
     expect(updateRef).toHaveBeenCalledWith(
       expect.objectContaining({ sha: "new-sha", force: false, ref: `heads/${branch}` }),
     );
@@ -134,7 +134,7 @@ describe("OctokitGitHub push history", () => {
 
     await expect(
       github.pushFiles({ installationId: 1, repo, branch, issueNumber: 7, files }),
-    ).resolves.toEqual({ sha: captured, created: false });
+    ).resolves.toEqual({ sha: captured, created: false, sensitivePaths: [] });
     expect(listCommits).toHaveBeenCalledWith(expect.objectContaining({ sha: captured, page: 1 }));
     expect(listCommits).toHaveBeenCalledWith(expect.objectContaining({ sha: captured, page: 2 }));
     expect(createCommit).not.toHaveBeenCalled();

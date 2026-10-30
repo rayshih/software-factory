@@ -171,7 +171,7 @@ describe("FakeGitHub", () => {
     });
     expect(first.created).toBe(true);
     expect(second.created).toBe(true);
-    expect(repeated).toEqual({ sha: second.sha, created: false });
+    expect(repeated).toEqual({ sha: second.sha, created: false, sensitivePaths: [] });
     expect(github.pushesCreated).toBe(2);
   });
 
@@ -215,7 +215,7 @@ describe("FakeGitHub", () => {
 
     expect(issueSeven.created).toBe(true);
     expect(issueEight.created).toBe(true);
-    expect(issueSevenRetry).toEqual({ sha: issueEight.sha, created: false });
+    expect(issueSevenRetry).toEqual({ sha: issueEight.sha, created: false, sensitivePaths: [] });
     expect(github.pushesCreated).toBe(3);
   });
 
@@ -252,7 +252,7 @@ describe("FakeGitHub", () => {
     });
 
     expect(first.created).toBe(true);
-    expect(repeated).toEqual({ sha: first.sha, created: false });
+    expect(repeated).toEqual({ sha: first.sha, created: false, sensitivePaths: [] });
     expect(github.pushesCreated).toBe(2);
   });
 
